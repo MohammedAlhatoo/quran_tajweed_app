@@ -61,14 +61,9 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   void _onAuthState(BuildContext context, AuthState state) {
-    switch (state) {
-      case AuthError(:final message):
-        showAppSnackBar(context, message, isError: true);
-      case AuthAuthenticated():
-        // Role-based navigation is added in the routing step.
-        showAppSnackBar(context, 'تم إنشاء الحساب بنجاح.');
-      case AuthInitial() || AuthLoading() || AuthPasswordResetSent():
-        break;
+    // A successful registration is handled by the router redirect.
+    if (state case AuthError(:final message)) {
+      showAppSnackBar(context, message, isError: true);
     }
   }
 

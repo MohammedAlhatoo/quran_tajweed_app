@@ -8,6 +8,18 @@ class AuthCubit extends Cubit<AuthState> {
 
   final AuthRepository _repository;
 
+  /// Checks for a session kept from a previous launch.
+  Future<void> restoreSession() async {
+    try {
+      final user = await _repository.restoreSession();
+      emit(
+        user == null ? const AuthUnauthenticated() : AuthAuthenticated(user),
+      );
+    } on AuthFailure catch (failure) {
+      emit(AuthError(failure.message));
+    }
+  }
+
   Future<void> signIn({required String email, required String password}) {
     return _run(() async {
       final user = await _repository.signIn(
@@ -47,7 +59,7 @@ class AuthCubit extends Cubit<AuthState> {
   Future<void> signOut() {
     return _run(() async {
       await _repository.signOut();
-      return const AuthInitial();
+      return const AuthUnauthenticated();
     });
   }
 

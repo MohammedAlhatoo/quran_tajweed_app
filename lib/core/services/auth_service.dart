@@ -7,9 +7,8 @@ class AuthService {
 
   final FirebaseAuth _auth;
 
-  User? get currentUser => _auth.currentUser;
-
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
+  /// The user kept from a previous launch, once Firebase has restored it.
+  Future<User?> restoreUser() => _auth.authStateChanges().first;
 
   Future<User> signIn({required String email, required String password}) async {
     final credential = await _auth.signInWithEmailAndPassword(

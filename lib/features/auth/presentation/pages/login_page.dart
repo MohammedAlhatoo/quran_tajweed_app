@@ -29,6 +29,19 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    // Restoring a saved session can fail before this page exists, for
+    // example when the account was suspended.
+    final state = context.read<AuthCubit>().state;
+    if (state case AuthError(:final message)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) showAppSnackBar(context, message, isError: true);
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
@@ -69,10 +82,11 @@ class _LoginPageState extends State<LoginPage> {
           context,
           'إن كان البريد مسجّلًا، فسيصلك رابط إعادة تعيين كلمة المرور.',
         );
-      case AuthAuthenticated():
-        // Role-based navigation is added in the routing step.
-        showAppSnackBar(context, 'تم تسجيل الدخول بنجاح.');
-      case AuthInitial() || AuthLoading():
+      // A successful sign-in is handled by the router redirect.
+      case AuthInitial() ||
+          AuthLoading() ||
+          AuthAuthenticated() ||
+          AuthUnauthenticated():
         break;
     }
   }

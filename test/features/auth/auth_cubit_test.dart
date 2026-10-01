@@ -22,6 +22,7 @@ class _FakeAuthRepository implements AuthRepository {
   AuthFailure? failure;
   List<Mosque> mosques = const [];
   Map<String, String>? lastRegistration;
+  AppUser? savedSession;
 
   @override
   Future<AppUser> signIn({
@@ -59,6 +60,12 @@ class _FakeAuthRepository implements AuthRepository {
   @override
   Future<void> sendPasswordResetEmail(String email) async {
     if (failure case final failure?) throw failure;
+  }
+
+  @override
+  Future<AppUser?> restoreSession() async {
+    if (failure case final failure?) throw failure;
+    return savedSession;
   }
 
   @override
@@ -126,6 +133,43 @@ void main() {
         (cubit.state as AuthPasswordResetSent).email,
         'student@example.com',
       );
+    });
+  });
+
+  group('AuthCubit session', () {
+    test('restoreSession emits authenticated for a saved session', () async {
+      repository.savedSession = _student;
+      final cubit = AuthCubit(repository);
+
+      await cubit.restoreSession();
+
+      expect((cubit.state as AuthAuthenticated).user.uid, 'uid-1');
+    });
+
+    test('restoreSession emits unauthenticated without a session', () async {
+      final cubit = AuthCubit(repository);
+
+      await cubit.restoreSession();
+
+      expect(cubit.state, isA<AuthUnauthenticated>());
+    });
+
+    test('restoreSession emits an error for a suspended account', () async {
+      repository.failure = const AuthFailure('هذا الحساب موقوف.');
+      final cubit = AuthCubit(repository);
+
+      await cubit.restoreSession();
+
+      expect((cubit.state as AuthError).message, 'هذا الحساب موقوف.');
+    });
+
+    test('signOut emits unauthenticated', () async {
+      final cubit = AuthCubit(repository);
+      await cubit.signIn(email: 'student@example.com', password: '123456');
+
+      await cubit.signOut();
+
+      expect(cubit.state, isA<AuthUnauthenticated>());
     });
   });
 

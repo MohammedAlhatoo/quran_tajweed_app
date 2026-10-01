@@ -16,6 +16,10 @@ abstract interface class AuthRepository {
   /// Signs in and returns the account. Inactive accounts are rejected.
   Future<AppUser> signIn({required String email, required String password});
 
+  /// Returns the account of the session kept from a previous launch, or null
+  /// when nobody is signed in. Inactive accounts are rejected.
+  Future<AppUser?> restoreSession();
+
   /// Creates a student account linked to [mosqueId]. The square and region are
   /// taken from the mosque document.
   Future<AppUser> registerStudent({

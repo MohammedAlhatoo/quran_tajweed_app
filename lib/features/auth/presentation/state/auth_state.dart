@@ -4,8 +4,13 @@ sealed class AuthState {
   const AuthState();
 }
 
+/// The saved session has not been checked yet.
 class AuthInitial extends AuthState {
   const AuthInitial();
+}
+
+class AuthUnauthenticated extends AuthState {
+  const AuthUnauthenticated();
 }
 
 class AuthLoading extends AuthState {

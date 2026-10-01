@@ -42,13 +42,30 @@ class FirebaseAuthRepository implements AuthRepository {
       throw _mapAuthError(e);
     }
 
+    return _loadProfile(firebaseUser.uid);
+  }
+
+  @override
+  Future<AppUser?> restoreSession() async {
+    final firebaseUser = await _authService.restoreUser();
+    if (firebaseUser == null) return null;
+    // A failed read keeps the session, so the next launch can retry.
+    return _loadProfile(firebaseUser.uid, signOutOnReadError: false);
+  }
+
+  /// Reads the account of a signed-in user. An account that is missing or
+  /// inactive is signed out and rejected.
+  Future<AppUser> _loadProfile(
+    String uid, {
+    bool signOutOnReadError = true,
+  }) async {
     final AppUser? user;
     try {
-      final snapshot = await _users.doc(firebaseUser.uid).get();
+      final snapshot = await _users.doc(uid).get();
       final data = snapshot.data();
       user = data == null ? null : AppUser.fromMap(snapshot.id, data);
     } on FirebaseException catch (e) {
-      await _authService.signOut();
+      if (signOutOnReadError) await _authService.signOut();
       throw _mapFirestoreError(e);
     }
 
