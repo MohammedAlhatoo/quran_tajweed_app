@@ -48,17 +48,16 @@ abstract final class AppTextStyles {
     color: AppColors.textSecondary,
   );
 
-  static TextTheme get textTheme =>
-      GoogleFonts.cairoTextTheme()
-          .apply(
-            bodyColor: AppColors.textPrimary,
-            displayColor: AppColors.textPrimary,
-          )
-          .copyWith(
-            headlineSmall: heading,
-            bodyMedium: body,
-            bodySmall: subtitle,
-            labelLarge: buttonSecondary,
-            labelSmall: caption,
-          );
+  static TextTheme get textTheme => GoogleFonts.cairoTextTheme()
+      .apply(
+        bodyColor: AppColors.textPrimary,
+        displayColor: AppColors.textPrimary,
+      )
+      .copyWith(
+        headlineSmall: heading,
+        bodyMedium: body,
+        bodySmall: subtitle,
+        labelLarge: buttonSecondary,
+        labelSmall: caption,
+      );
 }

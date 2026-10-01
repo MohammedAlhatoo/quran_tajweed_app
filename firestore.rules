@@ -23,5 +23,49 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow update, delete: if isAdmin();
     }
+
+    // Active mosques are readable before sign-in so a student can choose one
+    // during registration. Queries must filter on isActive == true.
+    match /mosques/{mosqueId} {
+      allow read: if resource.data.isActive == true;
+    }
+
+    function mosqueData(mosqueId) {
+      return get(/databases/$(database)/documents/mosques/$(mosqueId)).data;
+    }
+
+    match /users/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+
+      // Self-registration always creates an active student whose square and
+      // region come from the chosen mosque.
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasAll([
+          'uid', 'name', 'email', 'phone', 'role', 'regionId', 'squareId',
+          'mosqueId', 'isActive', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'uid', 'name', 'email', 'phone', 'role', 'regionId', 'squareId',
+          'mosqueId', 'isActive', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.uid == uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'student'
+        && request.resource.data.isActive == true
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 20
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.mosqueId is string
+        && mosqueData(request.resource.data.mosqueId).isActive == true
+        && request.resource.data.squareId
+          == mosqueData(request.resource.data.mosqueId).squareId
+        && request.resource.data.regionId
+          == mosqueData(request.resource.data.mosqueId).regionId;
+    }
   }
 }
