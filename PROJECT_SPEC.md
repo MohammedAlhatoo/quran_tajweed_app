@@ -6,8 +6,29 @@
 **Technology:** Flutter + Firebase
 **Qur'an Standard:** Hafs 'an Asim
 **Mushaf:** Madinah Mushaf — 604 Pages
-**Current Development Phase:** MVP — Manual Supervisor Evaluation
-**AI:** Not implemented in MVP
+**Current Development Phase:** Phase 1 — Manual Supervisor Evaluation
+**AI:** Not implemented in Phase 1
+
+---
+
+# Approved Phase 1 Decisions
+
+The following decisions are approved and take priority over any other wording in this document.
+
+1. **Scope:** Phase 1 is the current final project and the only phase being implemented now. Phase 2 and Phase 3 are Future Work only; no part of them is implemented now.
+2. **Cloud Functions:** Cloud Functions are not part of Phase 1 currently. They are added only if an essential Phase 1 requirement cannot be implemented securely and correctly without a trusted backend. Any such need is evaluated when the actual requirement is implemented. Cloud Functions are not considered part of the current architecture merely because they may be useful in the future.
+3. **User registration:**
+   * Students can self-register.
+   * Students do not choose their role.
+   * The first General Admin account is created manually during system setup.
+   * The General Admin creates Region Officer and Square Supervisor accounts from inside the admin panel.
+   * There is no self-registration for supervisors, region officers, or admins.
+   * No registration screen allows a user to choose a role.
+4. **Roles:** The system is a single multi-role Flutter application, not separate applications. Approved roles: `student`, `square_supervisor`, `region_officer`, `general_admin`. After login, the user is routed according to role and permissions.
+5. **Users:** The main Firestore collection for accounts is `users`. A `students` collection is not used as the primary accounts collection. The user type is determined by the `role` field.
+6. **Quran text:** The Quran text is not stored in Firestore. It is static data inside the Flutter application (Hafs 'an Asim, Madinah Mushaf, 604 pages).
+7. **Segment selection:** Quran data is linked to Tajweed rule data for ayahs/segments and pages. This linking data is stored in Firestore (predefined segments in `exam_segments`, rule definitions in `tajweed_rules`). The system selects segments randomly according to the course type and its rules, taking Rule Density into account. This works in Phase 1 without AI.
+8. **Scoring:** Final score is out of 100 — 80% recitation, 20% theory questions. The approved pass mark is 70/100.
 
 ---
 
@@ -17,7 +38,7 @@ The project is an interactive digital platform for testing Quran recitation and 
 
 The platform allows Quran students to complete recitation and theoretical Tajweed examinations remotely instead of requiring all examinations to take place physically at Quran centers or mosques.
 
-The current MVP focuses on manual evaluation by approved supervisors.
+The current Phase 1 focuses on manual evaluation by approved supervisors.
 
 The system will later support AI-assisted recitation analysis through external AI APIs and eventually a custom Tajweed analysis model.
 
@@ -32,7 +53,7 @@ The platform allows:
 * Students to submit Quran recitation recordings remotely.
 * Students to answer theoretical Tajweed questions.
 * Supervisors to review submissions remotely.
-* Supervisors to evaluate recitation and answers.
+* Supervisors to evaluate recitation and review answers.
 * Students to receive their final results.
 * Certificates to be generated after successful approval.
 
@@ -57,17 +78,16 @@ The system aims to:
 
 ---
 
-# 4. MVP Scope
+# 4. Phase 1 Scope
 
-The current graduation-project MVP will NOT use AI.
+The current graduation-project Phase 1 will NOT use AI.
 
-The MVP will use:
+Phase 1 will use:
 
 * Flutter
 * Firebase Authentication
 * Cloud Firestore
 * Firebase Storage
-* Firebase Cloud Messaging
 * Manual supervisor evaluation
 
 The initial deployment target is approximately:
@@ -120,11 +140,13 @@ The Region Officer manages a specific region.
 Responsibilities include:
 
 * Viewing squares inside the region.
-* Managing approved supervisors according to permissions.
+* Managing the existing supervisors inside the region according to the permissions granted to the Region Officer.
 * Viewing mosques.
 * Viewing students.
 * Viewing examination statistics.
 * Monitoring examination activity.
+
+The Region Officer does not create new supervisor accounts. Region Officer and Square Supervisor accounts are created by the General Admin.
 
 The Region Officer must not access unrelated regions.
 
@@ -138,11 +160,12 @@ Responsibilities include:
 
 * Viewing assigned mosques.
 * Viewing assigned students.
+* Managing the mosques and students belonging to the square according to the permissions granted to the Square Supervisor.
 * Reviewing submitted examinations.
 * Listening to recitation recordings.
 * Reviewing theoretical answers.
 * Entering recitation evaluation.
-* Entering question evaluation.
+* Viewing the theory score calculated automatically by the system (not entered or modified by the supervisor).
 * Approving final examination results.
 * Viewing student examination history.
 
@@ -156,7 +179,7 @@ Students can:
 
 * Sign in.
 * View their profile.
-* View their assigned mosque.
+* View their mosque (chosen by the student during registration).
 * View available courses.
 * Start examinations.
 * Read the assigned Quran segment.
@@ -188,7 +211,15 @@ region_officer
 general_admin
 ```
 
+The system is a single multi-role Flutter application, not separate applications per role.
+
+The role is stored in the `role` field of the user's document in `users`.
+
+Users never choose their own role. Self-registration always creates a `student`.
+
 Role-based access control must be implemented.
+
+After login, the user is routed according to role and permissions.
 
 Routing and Firebase security rules must respect the user's role.
 
@@ -205,6 +236,8 @@ The platform uses:
 The Quran content must be handled carefully and consistently.
 
 The application should not arbitrarily modify Quran text.
+
+The Quran text is not stored in Firestore. It is shipped as static data inside the Flutter application.
 
 ---
 
@@ -252,6 +285,12 @@ Examples include:
 
 The exact rules assigned to each course should be stored as structured data instead of being hard-coded into UI screens.
 
+The Tajweed rules themselves are defined in a separate Firestore collection named `tajweed_rules`. It is the reference source for `ruleId` and `ruleIds`.
+
+* `course_rules` links courses to Tajweed rules through `ruleId`.
+* `exam_segments.ruleIds` links each segment to the Tajweed rules in `tajweed_rules`.
+* The definitions of the Tajweed rules are not placed inside `exam_segments` or `course_rules`; these collections use references only.
+
 ---
 
 # 10. Examination Workflow
@@ -275,28 +314,32 @@ Review Submission
    ↓
 Submit Examination
    ↓
+System Calculates Theory Score Automatically and Creates Evaluation Record
+   ↓
 Status = Pending Review
    ↓
 Supervisor Reviews
    ↓
-Supervisor Evaluates Recitation
+Supervisor Evaluates Recitation (Enters Recitation Score)
    ↓
-Supervisor Evaluates Questions
+Supervisor Reviews Theory Answers (Cannot Modify Theory Score)
    ↓
 System Calculates Final Score
    ↓
 Supervisor Approves Result
    ↓
-Student Receives Result
+Student Receives Result (passed / failed)
    ↓
-Certificate Generated
+Certificate Generated (only if result = passed)
 ```
 
 ---
 
 # 11. Quran Segment Selection
 
-The MVP should use a structured Quran segment database.
+Phase 1 should use a structured Quran segment database: `exam_segments` in Firestore contains predefined segments, and the system selects from them randomly when the examination starts.
+
+A segment is identified by `surah`, `ayahFrom`, `ayahTo`, and `page`.
 
 The selected segment should be appropriate for the student's course.
 
@@ -308,7 +351,16 @@ The segment may be approximately 5–7 lines or an appropriate portion of a page
 
 The exact segment selection logic should be implemented as a service rather than inside the UI.
 
-Future versions may introduce more advanced randomization and AI-assisted selection.
+Random segment selection is part of Phase 1 itself and is not deferred to Future Work. It works in Phase 1 without AI.
+
+The random selection depends on:
+
+* The course level.
+* The Tajweed rules required for the course.
+* The rule data linked to ayahs/segments and pages. This data is stored in Firestore, because it is required for random selection according to the course.
+* Tajweed Rule Density.
+
+Future versions may introduce AI-assisted selection.
 
 ---
 
@@ -378,12 +430,40 @@ The final examination score is out of 100.
 ## Final Score
 
 ```text
-Recitation Score + Theory Score = Final Score / 100
+Final Score = Recitation Score (80) + Theory Score (20)
+```
+
+## Pass Mark
+
+```text
+70 / 100
+```
+
+## Result
+
+The examination result depends on the final score and is stored in a separate result field:
+
+```text
+Final Score >= 70 → passed
+Final Score < 70  → failed
 ```
 
 The system should calculate the final score automatically.
 
-The supervisor may enter or adjust the evaluation according to the examination workflow and permissions.
+In Phase 1, `theoryScore` is calculated automatically when the student submits the examination, after answering the ten questions.
+
+`theoryScore` is stored in `evaluations`, not in `exams` or `submissions`. The system creates the `evaluations` record after the student submits the examination.
+
+`finalScore` is calculated from `recitationScore` (80) + `theoryScore` (20) after the recitation score becomes available.
+
+The detailed technical mechanism for secure grading does not need to be decided now. It is determined during implementation, together with the Firestore Security Rules. Cloud Functions are not assumed as the solution at this stage.
+
+In Phase 1, the source of the theory score is the system's automatic grading, not supervisor entry.
+
+* The supervisor enters the recitation score only, out of 80.
+* The system calculates the theory score out of 20 automatically.
+* The supervisor can review the student's answers, but cannot modify the theory score calculated by the system.
+* The system then calculates the final score using the formula above.
 
 ---
 
@@ -398,8 +478,11 @@ submitted
 pending_review
 under_review
 approved
-rejected
 ```
+
+Passing and failing are expressed in a separate result field (`passed` / `failed`), not in the status.
+
+A student whose result is `failed` can retake the examination later through a new attempt / new examination. The previous approved examination is not reopened.
 
 The exact status transitions must be controlled by the application.
 
@@ -416,11 +499,11 @@ The supervisor should be able to:
 3. View the Quran segment.
 4. Listen to the recording.
 5. Review theory answers.
-6. Enter recitation score.
-7. Enter theory score.
+6. Enter recitation score (out of 80).
+7. View the theory score calculated automatically by the system (out of 20). The supervisor cannot modify it.
 8. Add notes or feedback.
 9. Review the calculated final score.
-10. Approve or reject the result.
+10. Approve the result. The result (`passed` / `failed`) is determined by the final score, not by the supervisor rejecting the examination.
 
 Evaluation records should be stored separately from the student's original submission where appropriate.
 
@@ -428,7 +511,12 @@ Evaluation records should be stored separately from the student's original submi
 
 # 17. Certificates
 
-After the supervisor approves a successful examination:
+A certificate is available only when both conditions are met:
+
+* The supervisor has approved the result.
+* The result is `passed` (Final Score >= 70).
+
+When both conditions are met:
 
 * A certificate record should be created.
 * The certificate should be associated with the student.
@@ -442,14 +530,15 @@ After the supervisor approves a successful examination:
 
 # 18. Notifications
 
-Firebase Cloud Messaging should be used for important notifications.
+Notifications for important events are required in Phase 1.
+
+The sending and implementation mechanism is not decided now. It is evaluated when the actual requirement is implemented.
 
 Examples:
 
 * Examination submitted.
 * Examination under review.
 * Examination approved.
-* Examination rejected.
 * Result available.
 * Certificate available.
 
@@ -465,8 +554,13 @@ The project uses:
 Firebase Authentication
 Cloud Firestore
 Firebase Storage
-Firebase Cloud Messaging
 ```
+
+Cloud Functions are not part of Phase 1 currently and are not part of the current architecture.
+
+* Cloud Functions are added only if an essential Phase 1 requirement cannot be implemented securely and correctly without a trusted backend.
+* Any future need for Cloud Functions is evaluated when the actual requirement is implemented.
+* Cloud Functions are not considered part of the current architecture merely because they may be useful in the future.
 
 ---
 
@@ -484,6 +578,34 @@ User profile and role information should be stored in Firestore.
 
 The Firebase Authentication UID must be used as the primary user identifier.
 
+Account creation rules:
+
+* Students can self-register. A self-registered account is always a `student`.
+* The student chooses the mosque during registration from the list of available mosques. The region and square are not chosen manually; the system derives them from the mosque.
+* Phase 1 does not add a separate account approval system.
+* The student can sign in after registration. The permission to start an examination depends on the student's mosque, square, and region affiliation data being complete.
+* The Square Supervisor does not need to manually assign the student to a mosque after registration.
+* The first General Admin account is created manually during system setup.
+* The General Admin creates Region Officer and Square Supervisor accounts from inside the admin panel.
+* There is no self-registration for supervisors, region officers, or admins.
+* No registration screen allows a user to choose a role.
+
+"Available mosques" means the mosques where `isActive == true`.
+
+The student registration order is:
+
+```text
+1. The student reads the list of active mosques.
+2. The student chooses the mosque (mosqueId).
+3. The chosen mosque document is read, and squareId and regionId are taken from it.
+4. The Firebase Authentication account is created.
+5. The users document is created in one write, containing mosqueId, squareId, regionId, and the rest of the account data.
+```
+
+The `squares` collection is not read during registration.
+
+There is no period in which the student's `users` document is missing `mosqueId`, `squareId`, or `regionId`.
+
 ---
 
 # 21. Firestore Collections
@@ -496,11 +618,12 @@ regions
 squares
 mosques
 courses
+tajweed_rules
 course_rules
 exams
 exam_segments
-questions
 question_bank
+exam_questions
 submissions
 evaluations
 certificates
@@ -508,6 +631,8 @@ notifications
 ```
 
 The exact document fields should be defined before implementation.
+
+`users` is the main collection for all accounts. A `students` collection is not used as the primary accounts collection; the user type is determined by the `role` field.
 
 ---
 
@@ -536,10 +661,28 @@ Not every role requires every field.
 
 For example:
 
-* Student → mosqueId
+* Student → mosqueId, squareId, regionId
 * Square Supervisor → squareId
 * Region Officer → regionId
 * General Admin → no geographic restriction
+
+For a student account:
+
+* The student chooses the mosque during registration from the list of available mosques.
+* The student does not choose the region or the square manually.
+* After the mosque is chosen, the chosen mosque document is read, and `squareId` and `regionId` are taken from it. The `squares` collection is not read during registration.
+* The administrative relationship remains mosque → square → region, but the source of the `squareId` and `regionId` values during registration is the chosen mosque document.
+* After the Firebase Authentication account is created, the `users` document is created in one write and contains `mosqueId`, `squareId`, `regionId`, and the rest of the account data.
+* There is no period in which the `users` document is missing `mosqueId`, `squareId`, or `regionId`.
+* The student is not allowed to modify `mosqueId`, `squareId`, or `regionId` after the account is created.
+
+The `isActive` field:
+
+* `isActive` stays in `users`. It is used to activate or deactivate an account administratively when needed.
+* The meaning of `isActive` applies to all roles in `users`, not only students.
+* When a student registers and the account is created, `isActive = true`.
+* There is no approval or manual activation system for the student after registration.
+* The supervisor does not need to assign or activate the student after registration.
 
 ---
 
@@ -632,13 +775,13 @@ course_rules/{courseRuleId}
 
 courseId
 ruleId
-ruleName
-description
 weight
 createdAt
 ```
 
 This allows each course to define its own Tajweed rule coverage.
+
+`course_rules` links courses to Tajweed rules through `ruleId`, which references `tajweed_rules`. The rule definition itself (such as its name and description) is not stored in `course_rules`.
 
 ---
 
@@ -674,7 +817,6 @@ surah
 ayahFrom
 ayahTo
 page
-text
 ruleIds
 courseIds
 difficulty
@@ -683,6 +825,14 @@ isActive
 createdAt
 ```
 
+`exam_segments` stays in Firestore because it holds the segment data needed for random selection and for linking segments to rules and courses.
+
+The segments are predefined in Firestore, and the system selects from them randomly when the examination starts.
+
+`ruleIds` links each segment to the Tajweed rules in `tajweed_rules`. The rule definitions themselves are not stored in `exam_segments`.
+
+`exam_segments` does not store the Quran text. A segment is identified by its reference (`surah`, `ayahFrom`, `ayahTo`, `page`), and its text is read from the static Quran data inside the Flutter application (Hafs 'an Asim, Madinah Mushaf, 604 pages).
+
 The actual Quran data must be handled carefully and should not be duplicated unnecessarily.
 
 ---
@@ -690,6 +840,10 @@ The actual Quran data must be handled carefully and should not be duplicated unn
 # 30. Question Bank
 
 The question bank stores reusable questions.
+
+`question_bank` is the main question bank collection and contains the questions available for selection.
+
+A separate collection named `questions` is not used for the same purpose.
 
 Example:
 
@@ -708,11 +862,17 @@ createdAt
 updatedAt
 ```
 
-The correct answer must not be exposed to the student client unnecessarily.
+`correctAnswer` must not be sent to the student application during the examination, and must not be included in any examination data the student can read.
+
+`correctAnswer` must be protected so that the student cannot access it directly through Firestore.
 
 ---
 
 # 31. Exam Questions
+
+`exam_questions` is the collection for the questions selected for a specific examination. Each record is linked to the examination by `examId`.
+
+When the examination is created, the system selects 10 questions from `question_bank` according to the course rules and the approved criteria, then saves the selected questions in `exam_questions`.
 
 The selected questions for an individual examination should be associated with that examination.
 
@@ -735,6 +895,10 @@ submittedAt
 createdAt
 ```
 
+The student's `answers` are linked to the selected questions of that examination in `exam_questions`.
+
+`submittedAt` records the time the examination was submitted. `submissions` does not hold the score; `theoryScore` is stored in `evaluations`.
+
 The original student submission should remain preserved.
 
 ---
@@ -751,11 +915,39 @@ supervisorId
 recitationScore
 theoryScore
 finalScore
+result
 feedback
 status
 reviewedAt
 approvedAt
 ```
+
+`status` expresses the review and approval state of the evaluation:
+
+```text
+pending
+approved
+```
+
+`result` is separate from `status` and depends on the final score:
+
+```text
+passed   (Final Score >= 70)
+failed   (Final Score < 70)
+```
+
+The system creates the `evaluations` record after the student submits the examination.
+
+* When the record is created, `theoryScore` is already calculated automatically (out of 20), while `recitationScore` is still waiting for the supervisor's review.
+* The supervisor is allowed to enter `recitationScore` only (out of 80), within the supervisor's permissions. The supervisor does not write or modify `theoryScore`.
+* `finalScore` is calculated from `recitationScore` (80) + `theoryScore` (20) after the recitation score becomes available.
+* The student is not allowed to write to or modify `evaluations`.
+
+The `supervisorId` field:
+
+* When the `evaluations` record is created after the student submits the examination, `supervisorId = null`.
+* When the supervisor reviews the recitation and enters `recitationScore`, the system records the `supervisorId` of the supervisor who performed the review.
+* `supervisorId` represents the supervisor who actually performed the evaluation, not necessarily the supervisor assigned to the square beforehand.
 
 ---
 
@@ -827,6 +1019,10 @@ Firestore and Storage security rules must enforce:
 * Protection of evaluation records.
 * Protection of question-bank answers.
 * Protection of administrative data.
+
+Exception to user authentication — reading the mosque list during registration:
+
+* Reading the list of active mosques only (`isActive == true`) is allowed before sign-in, because the student needs to choose the mosque during registration.
 
 The client application must not be considered the only security layer.
 
@@ -957,11 +1153,11 @@ Architecture should remain clean without creating unnecessary files.
 
 # 41. State Management
 
-# 41. State Management
-
 The project will use:
 
+```text
 flutter_bloc
+```
 
 State management will use both Cubit and Bloc depending on the complexity of the feature.
 
@@ -971,6 +1167,7 @@ Bloc should be used for complex event-driven flows where explicit events and sta
 
 Examples of state management components may include:
 
+```text
 AuthCubit
 ExamCubit
 RecordingCubit
@@ -978,6 +1175,7 @@ QuestionsCubit
 SupervisorCubit
 CertificateCubit
 NotificationCubit
+```
 
 Not every feature requires its own Cubit or Bloc.
 
@@ -985,7 +1183,7 @@ State management must remain consistent throughout the project.
 
 Do not introduce another state-management package without explicit approval.
 
-The MVP must use flutter_bloc and must not mix multiple state-management solutions unnecessarily.
+Phase 1 must use flutter_bloc and must not mix multiple state-management solutions unnecessarily.
 
 ---
 
@@ -1065,18 +1263,27 @@ The student application should include interfaces such as:
 1. Splash
 2. Onboarding
 3. Login
-4. Home
-5. Profile
-6. Courses
-7. Course Details
-8. Start Examination
-9. Quran Recitation / Recording
-10. Theory Questions
-11. Review Submission
-12. Submission Status
-13. Result
-14. Certificate
-15. Notifications
+4. Student Registration
+5. Home
+6. Profile
+7. Courses
+8. Course Details
+9. Start Examination
+10. Quran Recitation / Recording
+11. Theory Questions
+12. Review Submission
+13. Submission Status
+14. Result
+15. Certificate
+16. Notifications
+
+In Phase 1, the student can create their own account through Student Registration.
+
+The student does not choose a role during registration. The role is assigned automatically to `student`.
+
+During registration, the student chooses the mosque from the list of available mosques. The student does not choose the region or the square; the system derives them automatically from the mosque.
+
+The `region_officer`, `square_supervisor`, and `general_admin` accounts are not created through public registration. The `region_officer` and `square_supervisor` accounts are created by the General Admin, and are managed by the administrative authorities according to the approved permissions.
 
 The final interface count may be adjusted according to the approved Figma design.
 
@@ -1134,9 +1341,9 @@ The General Admin section should support:
 
 ---
 
-# 49. Current MVP Limitations
+# 49. Current Phase 1 Limitations
 
-The MVP intentionally does NOT include:
+Phase 1 intentionally does NOT include:
 
 * Automatic Tajweed AI analysis.
 * Custom AI model.
@@ -1144,13 +1351,15 @@ The MVP intentionally does NOT include:
 * Automatic Tajweed rule detection.
 * Advanced AI recitation scoring.
 
-These are future development phases.
+These are Future Work only (Phase 2 and Phase 3) and are not implemented now.
 
 ---
 
-# 50. Development Phase 2 — Ready AI API
+# 50. Future Work — Phase 2: Ready AI API
 
-After successful MVP testing, the system may integrate a ready-made AI/API service for recitation analysis.
+Phase 2 is Future Work only. No part of it is implemented now.
+
+After successful Phase 1 testing, the system may integrate a ready-made AI/API service for recitation analysis.
 
 Target courses:
 
@@ -1178,7 +1387,9 @@ The exact AI provider will be selected later after technical evaluation.
 
 ---
 
-# 51. Development Phase 3 — Custom AI
+# 51. Future Work — Phase 3: Custom AI
+
+Phase 3 is Future Work only. No part of it is implemented now.
 
 The long-term goal is a custom Quran recitation and Tajweed analysis model.
 
@@ -1197,7 +1408,7 @@ The system may eventually analyze:
 * Saktah.
 * Other Tajweed rules.
 
-This phase is outside the graduation MVP.
+This phase is outside the graduation project's Phase 1.
 
 ---
 
@@ -1219,13 +1430,13 @@ Mosque
 Students
 ```
 
-The current MVP may operate with one initial organization while keeping the architecture extensible.
+The current Phase 1 may operate with one initial organization while keeping the architecture extensible.
 
 ---
 
 # 53. Testing
 
-Before deployment, the MVP should undergo approximately two months of testing.
+Before deployment, Phase 1 should undergo approximately two months of testing.
 
 Testing should verify:
 
@@ -1251,7 +1462,7 @@ Claude Code must follow these rules:
 1. Read `PROJECT_SPEC.md` before implementing major features.
 2. Do not invent business requirements.
 3. Do not change the architecture without approval.
-4. Do not add AI to the MVP.
+4. Do not add AI to Phase 1.
 5. Do not add unnecessary packages.
 6. Do not duplicate business logic.
 7. Keep UI separate from business logic.
@@ -1292,10 +1503,10 @@ The implementation should follow this general order:
 19. General Admin Module
 20. Security Rules
 21. Testing
-22. MVP Deployment
+22. Phase 1 Deployment
 ```
 
-AI must not be implemented before the MVP is completed and tested.
+AI must not be implemented before Phase 1 is completed and tested.
 
 ---
 
@@ -1323,8 +1534,10 @@ Current state:
 ```text
 Project initialized.
 PROJECT_SPEC.md created.
+Phase 1 decisions approved (see "Approved Phase 1 Decisions").
+Phase 2 and Phase 3 are Future Work only.
 Implementation has not started.
-AI is not part of MVP.
+AI is not part of Phase 1.
 Figma MCP is connected to Claude Code.
 ```
 
