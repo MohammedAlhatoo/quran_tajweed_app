@@ -30,6 +30,19 @@ service cloud.firestore {
       allow read: if resource.data.isActive == true;
     }
 
+    // Course content is readable by any signed-in user.
+    match /courses/{courseId} {
+      allow read: if signedIn();
+    }
+
+    match /course_rules/{courseRuleId} {
+      allow read: if signedIn();
+    }
+
+    match /tajweed_rules/{ruleId} {
+      allow read: if signedIn();
+    }
+
     function mosqueData(mosqueId) {
       return get(/databases/$(database)/documents/mosques/$(mosqueId)).data;
     }

@@ -5,6 +5,23 @@ import 'app_colors.dart';
 
 /// Text styles taken from the approved Figma design (Cairo).
 abstract final class AppTextStyles {
+  /// A one-off Cairo style for sizes that have no named style.
+  static TextStyle cairo({
+    required double size,
+    required FontWeight weight,
+    required Color color,
+    double? lineHeight,
+    double? letterSpacing,
+  }) {
+    return GoogleFonts.cairo(
+      fontSize: size,
+      fontWeight: weight,
+      color: color,
+      height: lineHeight == null ? null : lineHeight / size,
+      letterSpacing: letterSpacing,
+    );
+  }
+
   static TextStyle get heading => GoogleFonts.cairo(
     fontSize: 24,
     fontWeight: FontWeight.w700,

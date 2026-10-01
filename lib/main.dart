@@ -10,6 +10,10 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/data/repositories/firebase_auth_repository.dart';
 import 'features/auth/domain/repositories/auth_repository.dart';
 import 'features/auth/presentation/state/auth_cubit.dart';
+import 'features/courses/data/repositories/firestore_courses_repository.dart';
+import 'features/courses/domain/repositories/courses_repository.dart';
+import 'features/student/data/repositories/firestore_student_profile_repository.dart';
+import 'features/student/domain/repositories/student_profile_repository.dart';
 import 'firebase_options.dart';
 import 'router/app_router.dart';
 
@@ -50,8 +54,16 @@ class _QuranTajweedAppState extends State<QuranTajweedApp> {
 
   @override
   Widget build(BuildContext context) {
-    return RepositoryProvider<AuthRepository>.value(
-      value: _authRepository,
+    return MultiRepositoryProvider(
+      providers: [
+        RepositoryProvider<AuthRepository>.value(value: _authRepository),
+        RepositoryProvider<CoursesRepository>(
+          create: (_) => FirestoreCoursesRepository(),
+        ),
+        RepositoryProvider<StudentProfileRepository>(
+          create: (_) => FirestoreStudentProfileRepository(),
+        ),
+      ],
       child: BlocProvider<AuthCubit>.value(
         value: _authCubit,
         child: MaterialApp.router(

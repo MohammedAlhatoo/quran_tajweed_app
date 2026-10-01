@@ -14,7 +14,18 @@ import '../features/auth/presentation/state/auth_state.dart';
 import '../features/auth/presentation/state/mosques_cubit.dart';
 import '../features/region/presentation/pages/region_home_page.dart';
 import '../features/splash/presentation/pages/splash_page.dart';
-import '../features/student/presentation/pages/student_home_page.dart';
+import '../features/courses/domain/repositories/courses_repository.dart';
+import '../features/courses/presentation/pages/course_details_page.dart';
+import '../features/courses/presentation/pages/courses_page.dart';
+import '../features/courses/presentation/state/course_details_cubit.dart';
+import '../features/courses/presentation/state/courses_cubit.dart';
+import '../features/exams/presentation/pages/exam_history_page.dart';
+import '../features/home/presentation/pages/home_page.dart';
+import '../features/student/domain/repositories/student_profile_repository.dart';
+import '../features/student/presentation/pages/personal_info_page.dart';
+import '../features/student/presentation/pages/profile_page.dart';
+import '../features/student/presentation/pages/student_shell.dart';
+import '../features/student/presentation/state/mosque_name_cubit.dart';
 import '../features/supervisor/presentation/pages/supervisor_home_page.dart';
 import 'route_names.dart';
 
@@ -44,10 +55,7 @@ abstract final class AppRouter {
             child: const RegisterPage(),
           ),
         ),
-        GoRoute(
-          path: RouteNames.student,
-          builder: (context, state) => const StudentHomePage(),
-        ),
+        ..._studentRoutes(authCubit),
         GoRoute(
           path: RouteNames.supervisor,
           builder: (context, state) => const SupervisorHomePage(),
@@ -62,6 +70,77 @@ abstract final class AppRouter {
         ),
       ],
     );
+  }
+
+  /// The student's area: four tabs inside the shell, and full-screen pages
+  /// that open above it.
+  static List<RouteBase> _studentRoutes(AuthCubit authCubit) {
+    return [
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) => BlocProvider(
+          create: (context) =>
+              CoursesCubit(context.read<CoursesRepository>())..load(),
+          child: StudentShell(navigationShell: navigationShell),
+        ),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: RouteNames.student,
+                builder: (context, state) => const HomePage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: RouteNames.studentCourses,
+                builder: (context, state) => const CoursesPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: RouteNames.studentExams,
+                builder: (context, state) => const ExamHistoryPage(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: RouteNames.studentProfile,
+                builder: (context, state) => const ProfilePage(),
+              ),
+            ],
+          ),
+        ],
+      ),
+      GoRoute(
+        path: RouteNames.studentCourseDetailsPattern,
+        builder: (context, state) => BlocProvider(
+          create: (context) => CourseDetailsCubit(
+            context.read<CoursesRepository>(),
+            state.pathParameters['courseId']!,
+          )..load(),
+          child: const CourseDetailsPage(),
+        ),
+      ),
+      GoRoute(
+        path: RouteNames.studentPersonalInfo,
+        builder: (context, state) => BlocProvider(
+          create: (context) {
+            final authState = authCubit.state;
+            return MosqueNameCubit(context.read<StudentProfileRepository>())
+              ..load(
+                authState is AuthAuthenticated ? authState.user.mosqueId : null,
+              );
+          },
+          child: const PersonalInfoPage(),
+        ),
+      ),
+    ];
   }
 
   /// The root of the area a role is allowed to open.

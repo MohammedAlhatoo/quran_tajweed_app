@@ -28,6 +28,20 @@ abstract final class AppTheme {
       ),
       scaffoldBackgroundColor: AppColors.background,
       textTheme: AppTextStyles.textTheme,
+      appBarTheme: AppBarTheme(
+        backgroundColor: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+        titleTextStyle: AppTextStyles.cairo(
+          size: 16,
+          weight: FontWeight.w700,
+          color: AppColors.title,
+          lineHeight: 24,
+        ),
+        shape: const Border(bottom: BorderSide(color: AppColors.lineSoft)),
+      ),
       dividerTheme: const DividerThemeData(
         color: AppColors.border,
         thickness: 1,
