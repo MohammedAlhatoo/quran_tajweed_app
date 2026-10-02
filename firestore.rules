@@ -5,10 +5,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAdmin() {
-      return signedIn() && request.auth.token.admin == true;
-    }
-
     function ownUser() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
@@ -38,15 +34,27 @@ service cloud.firestore {
       return isGeneralAdmin() || isOfficerOf(regionId);
     }
 
-    function isActiveSupervisor() {
-      return hasRole('square_supervisor');
+    // A suspended student keeps reading their own records but writes nothing.
+    function isActiveStudent() {
+      return hasRole('student');
+    }
+
+    // An active square supervisor who is assigned to a square. A supervisor
+    // without a square reaches no square or examination data.
+    function isAssignedSupervisor() {
+      return hasRole('square_supervisor')
+        && ownUser().squareId is string;
     }
 
     // An active square supervisor reviewing the examinations of [squareId].
     function isSupervisorOf(squareId) {
-      return isActiveSupervisor()
-        && ownUser().squareId is string
+      return isAssignedSupervisor()
         && ownUser().squareId == squareId;
+    }
+
+    // The account [uid] as it is once the current batch is applied.
+    function userDataAfter(uid) {
+      return getAfter(/databases/$(database)/documents/users/$(uid)).data;
     }
 
     function awaitingReview(status) {
@@ -78,19 +86,21 @@ service cloud.firestore {
       return name is string && name.size() > 0 && name.size() <= 100;
     }
 
-    match /students/{uid} {
-      allow create: if signedIn()
-        && request.auth.uid == uid
-        && request.resource.data.uid == uid
-        && request.resource.data.email == request.auth.token.email
-        && request.resource.data.status == 'pending'
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.keys().hasOnly([
-          'uid', 'fullName', 'phone', 'email', 'createdAt', 'status'
-        ]);
-      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
-      allow list: if isAdmin();
-      allow update, delete: if isAdmin();
+    function validAddress(address) {
+      return address is string && address.size() <= 500;
+    }
+
+    // The account recorded on a unit ([field] is officerId or supervisorId)
+    // is cleared, left as it was, or set to an account that holds [role] over
+    // that unit ([scopeField] is regionId or squareId) once the batch is
+    // applied. Access never depends on this field; the users document decides.
+    function validUnitLink(field, role, scopeField, unitId) {
+      let linked = request.resource.data.get(field, null);
+      return linked == null
+        || linked == resource.data.get(field, null)
+        || (linked is string
+          && userDataAfter(linked).role == role
+          && userDataAfter(linked)[scopeField] == unitId);
     }
 
     // Regions are managed by the General Admin only. An officer reads their
@@ -98,8 +108,25 @@ service cloud.firestore {
     match /regions/{regionId} {
       allow read: if isGeneralAdmin() || isOfficerOf(regionId);
 
-      allow create, update: if isGeneralAdmin()
+      allow create: if isGeneralAdmin()
+        && request.resource.data.keys().hasOnly([
+          'name', 'description', 'officerId', 'isActive', 'createdAt',
+          'updatedAt'
+        ])
         && validName(request.resource.data.name)
+        && request.resource.data.get('description', '') is string
+        && request.resource.data.get('officerId', null) == null
+        && request.resource.data.isActive is bool
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if isGeneralAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'description', 'officerId', 'isActive', 'updatedAt'
+        ])
+        && validName(request.resource.data.name)
+        && request.resource.data.get('description', '') is string
+        && validUnitLink('officerId', 'region_officer', 'regionId', regionId)
         && request.resource.data.isActive is bool
         && request.resource.data.updatedAt == request.time;
     }
@@ -112,14 +139,23 @@ service cloud.firestore {
         || isSupervisorOf(squareId);
 
       allow create: if managesRegion(request.resource.data.regionId)
+        && request.resource.data.keys().hasOnly([
+          'name', 'regionId', 'supervisorId', 'isActive', 'createdAt',
+          'updatedAt'
+        ])
         && regionExists(request.resource.data.regionId)
         && validName(request.resource.data.name)
+        && request.resource.data.get('supervisorId', null) == null
         && request.resource.data.isActive is bool
+        && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
 
       allow update: if managesRegion(resource.data.regionId)
-        && request.resource.data.regionId == resource.data.regionId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'supervisorId', 'isActive', 'updatedAt'
+        ])
         && validName(request.resource.data.name)
+        && validUnitLink('supervisorId', 'square_supervisor', 'squareId', squareId)
         && request.resource.data.isActive is bool
         && request.resource.data.updatedAt == request.time;
     }
@@ -134,18 +170,30 @@ service cloud.firestore {
 
       // A mosque belongs to a square of its region.
       allow create: if managesRegion(request.resource.data.regionId)
+        && request.resource.data.keys().hasOnly([
+          'name', 'address', 'squareId', 'regionId', 'isActive', 'createdAt',
+          'updatedAt'
+        ])
         && validName(request.resource.data.name)
+        && validAddress(request.resource.data.get('address', ''))
         && request.resource.data.isActive is bool
         && request.resource.data.squareId is string
         && squareData(request.resource.data.squareId).regionId
           == request.resource.data.regionId
+        && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
 
       // Moving a mosque needs authority over both the region it leaves and
       // the region it joins, so an officer cannot move one out of the region.
+      // A square supervisor never creates or moves a mosque. Not enforced
+      // here: that the students of the mosque move in the same batch.
       allow update: if managesRegion(resource.data.regionId)
         && managesRegion(request.resource.data.regionId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'address', 'squareId', 'regionId', 'isActive', 'updatedAt'
+        ])
         && validName(request.resource.data.name)
+        && validAddress(request.resource.data.get('address', ''))
         && request.resource.data.isActive is bool
         && request.resource.data.squareId is string
         && squareData(request.resource.data.squareId).regionId
@@ -175,10 +223,12 @@ service cloud.firestore {
       allow read: if signedIn();
     }
 
-    // Correct answers. Students never read them. An active supervisor reads
-    // one at a time to grade the theory answers of a submitted examination.
+    // Correct answers. Students never read them, and nobody lists them. An
+    // active supervisor assigned to a square reads one at a time to grade the
+    // theory answers of a submitted examination. Not enforced here: that the
+    // question belongs to an examination of the supervisor's square.
     match /question_answers/{questionId} {
-      allow get: if isActiveSupervisor();
+      allow get: if isAssignedSupervisor();
     }
 
     match /exams/{examId} {
@@ -216,6 +266,9 @@ service cloud.firestore {
         && request.resource.data.approvedAt == null
         && ownUser().role == 'student'
         && ownUser().isActive == true
+        && request.resource.data.mosqueId is string
+        && request.resource.data.squareId is string
+        && request.resource.data.regionId is string
         && request.resource.data.mosqueId == ownUser().mosqueId
         && request.resource.data.squareId == ownUser().squareId
         && request.resource.data.regionId == ownUser().regionId
@@ -227,7 +280,9 @@ service cloud.firestore {
 
       // The student submits the examination: only the status and the two
       // timestamps change, in the same batch that creates the submission.
-      allow update: if signedIn()
+      // The mosque, square and region the examination was started in never
+      // change, whoever writes.
+      allow update: if isActiveStudent()
         && resource.data.studentId == request.auth.uid
         && resource.data.status == 'in_progress'
         && request.resource.data.status == 'pending_review'
@@ -291,7 +346,8 @@ service cloud.firestore {
         && request.resource.data.result
           == (request.resource.data.finalScore >= 70 ? 'passed' : 'failed')
         && (request.resource.data.feedback == null
-          || request.resource.data.feedback is string)
+          || (request.resource.data.feedback is string
+            && request.resource.data.feedback.size() <= 2000))
         && request.resource.data.status == 'approved'
         && request.resource.data.reviewedAt == request.time
         && request.resource.data.approvedAt == request.time
@@ -323,6 +379,7 @@ service cloud.firestore {
         && request.resource.data.courseId == examData(certificateId).courseId
         && request.resource.data.certificateNumber is string
         && request.resource.data.certificateNumber.size() > 0
+        && request.resource.data.certificateNumber.size() <= 40
         && request.resource.data.fileUrl == null
         && request.resource.data.issuedAt == request.time
         // Only for the evaluation written in this batch, and only if passed.
@@ -346,7 +403,7 @@ service cloud.firestore {
 
       // The student tells the supervisor of the examination's square that an
       // examination was submitted, in the batch that submits it.
-      allow create: if signedIn()
+      allow create: if isActiveStudent()
         && validNotification()
         && request.resource.data.type == 'exam_submitted'
         && notificationId == request.resource.data.relatedId + '_submitted'
@@ -389,16 +446,30 @@ service cloud.firestore {
         && data.createdAt == request.time;
     }
 
+    // One answer of a submission: {order, questionId, answer}.
+    function validAnswer(answer) {
+      return answer is map
+        && answer.keys().hasAll(['order', 'questionId', 'answer'])
+        && answer.keys().hasOnly(['order', 'questionId', 'answer'])
+        && answer.order is int
+        && answer.order >= 1
+        && answer.order <= 10
+        && answer.questionId is string
+        && answer.answer is string
+        && answer.answer.size() <= 500;
+    }
+
     // One submission per examination, with the examination's ID. It is never
     // changed after it is created. Not enforced here: that the recording
     // exists in Storage, and that the answers match the examination's
     // questions.
     match /submissions/{submissionId} {
+      // A student's queries must filter on studentId.
       allow read: if signedIn() && resource.data.studentId == request.auth.uid;
 
       allow get: if isSupervisorOf(examData(submissionId).squareId);
 
-      allow create: if signedIn()
+      allow create: if isActiveStudent()
         && request.resource.data.keys().hasAll([
           'examId', 'studentId', 'recordingUrl', 'answers', 'submittedAt',
           'createdAt'
@@ -413,6 +484,16 @@ service cloud.firestore {
           == 'exam_recordings/' + submissionId + '/recitation.m4a'
         && request.resource.data.answers is list
         && request.resource.data.answers.size() == 10
+        && validAnswer(request.resource.data.answers[0])
+        && validAnswer(request.resource.data.answers[1])
+        && validAnswer(request.resource.data.answers[2])
+        && validAnswer(request.resource.data.answers[3])
+        && validAnswer(request.resource.data.answers[4])
+        && validAnswer(request.resource.data.answers[5])
+        && validAnswer(request.resource.data.answers[6])
+        && validAnswer(request.resource.data.answers[7])
+        && validAnswer(request.resource.data.answers[8])
+        && validAnswer(request.resource.data.answers[9])
         && request.resource.data.submittedAt == request.time
         && request.resource.data.createdAt == request.time
         && get(/databases/$(database)/documents/exams/$(submissionId)).data.studentId == request.auth.uid
@@ -426,7 +507,11 @@ service cloud.firestore {
       // One record at a time, by ID.
       allow get: if isSupervisorOf(examData(resource.data.examId).squareId);
 
-      // Written together with the examination, in the same batch.
+      // Written by the student for their own open examination, and never
+      // changed afterwards. The account's role is checked on the examination
+      // itself, to keep the batch within the document access limit. Not
+      // enforced here: that the question is a copy of an active question_bank
+      // question of the course.
       allow create: if signedIn()
         && request.resource.data.keys().hasAll([
           'examId', 'studentId', 'questionId', 'order', 'type', 'question',
@@ -437,6 +522,7 @@ service cloud.firestore {
           'options'
         ])
         && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.examId is string
         && request.resource.data.order is int
         && request.resource.data.order >= 1
         && request.resource.data.order <= 10
@@ -583,6 +669,8 @@ service cloud.firestore {
           'name', 'phone', 'isActive', 'regionId', 'squareId', 'updatedAt'
         ])
         && validName(request.resource.data.name)
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 20
         && request.resource.data.isActive is bool
         && request.resource.data.updatedAt == request.time
         && ((resource.data.role in ['region_officer', 'square_supervisor']

@@ -25,19 +25,25 @@ service firebase.storage {
       allow read: if signedIn()
         && examData(examId).studentId == request.auth.uid;
 
-      // An active square supervisor listens to the recordings of the square.
+      // An active square supervisor listens to the recordings of the square
+      // the examination was started in, once it is submitted. A supervisor
+      // without a square, or of another square, reads nothing.
       allow read: if hasRole('square_supervisor')
         && ownUser().squareId is string
-        && ownUser().squareId == examData(examId).squareId;
+        && ownUser().squareId == examData(examId).squareId
+        && examData(examId).status != 'in_progress';
 
-      // The officer of the examination's region, and the General Admin.
-      allow read: if hasRole('general_admin')
-        || (hasRole('region_officer')
-          && ownUser().regionId is string
-          && ownUser().regionId == examData(examId).regionId);
+      // The officer of the examination's region, and the General Admin, once
+      // it is submitted.
+      allow read: if (hasRole('general_admin')
+          || (hasRole('region_officer')
+            && ownUser().regionId is string
+            && ownUser().regionId == examData(examId).regionId))
+        && examData(examId).status != 'in_progress';
 
-      // Only the examination's student, and only until it is submitted.
-      allow create, update: if signedIn()
+      // Only the examination's student, while the account is active, and only
+      // until the examination is submitted. Nobody deletes a recording.
+      allow create, update: if hasRole('student')
         && examData(examId).studentId == request.auth.uid
         && examData(examId).status == 'in_progress'
         && request.resource.size > 0
