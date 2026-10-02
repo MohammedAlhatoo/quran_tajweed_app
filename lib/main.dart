@@ -12,6 +12,8 @@ import 'features/auth/domain/repositories/auth_repository.dart';
 import 'features/auth/presentation/state/auth_cubit.dart';
 import 'features/courses/data/repositories/firestore_courses_repository.dart';
 import 'features/courses/domain/repositories/courses_repository.dart';
+import 'features/exams/data/repositories/firestore_exams_repository.dart';
+import 'features/exams/domain/repositories/exams_repository.dart';
 import 'features/student/data/repositories/firestore_student_profile_repository.dart';
 import 'features/student/domain/repositories/student_profile_repository.dart';
 import 'firebase_options.dart';
@@ -59,6 +61,9 @@ class _QuranTajweedAppState extends State<QuranTajweedApp> {
         RepositoryProvider<AuthRepository>.value(value: _authRepository),
         RepositoryProvider<CoursesRepository>(
           create: (_) => FirestoreCoursesRepository(),
+        ),
+        RepositoryProvider<ExamsRepository>(
+          create: (_) => FirestoreExamsRepository(),
         ),
         RepositoryProvider<StudentProfileRepository>(
           create: (_) => FirestoreStudentProfileRepository(),

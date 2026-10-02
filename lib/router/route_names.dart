@@ -7,6 +7,10 @@ abstract final class RouteNames {
   static const String student = '/student';
   static const String studentCourses = '/student/courses';
   static const String studentExams = '/student/exams';
+  static const String studentExamPattern = '/student/exams/:examId';
+
+  static String studentExam(String examId) => '/student/exams/$examId';
+
   static const String studentProfile = '/student/profile';
   static const String studentPersonalInfo = '/student/profile/info';
   static const String studentCourseDetailsPattern =

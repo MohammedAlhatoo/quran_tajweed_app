@@ -43,6 +43,87 @@ service cloud.firestore {
       allow read: if signedIn();
     }
 
+    match /exam_segments/{segmentId} {
+      allow read: if signedIn();
+    }
+
+    // Questions never hold the correct answer; see question_answers.
+    match /question_bank/{questionId} {
+      allow read: if signedIn();
+    }
+
+    // Correct answers. No client access.
+    match /question_answers/{questionId} {
+      allow read, write: if false;
+    }
+
+    function ownUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    match /exams/{examId} {
+      allow read: if signedIn() && resource.data.studentId == request.auth.uid;
+
+      // A student starts an examination for themselves. The affiliation must
+      // match the student's account, and the course and segment must be
+      // active and linked. Not enforced here: the random choice of the
+      // segment, and the limit of one open examination per course.
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll([
+          'studentId', 'courseId', 'segmentId', 'status', 'mosqueId',
+          'squareId', 'regionId', 'startedAt', 'submittedAt', 'reviewedAt',
+          'approvedAt', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'studentId', 'courseId', 'segmentId', 'status', 'mosqueId',
+          'squareId', 'regionId', 'startedAt', 'submittedAt', 'reviewedAt',
+          'approvedAt', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.status == 'in_progress'
+        && request.resource.data.startedAt == request.time
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.submittedAt == null
+        && request.resource.data.reviewedAt == null
+        && request.resource.data.approvedAt == null
+        && ownUser().role == 'student'
+        && ownUser().isActive == true
+        && request.resource.data.mosqueId == ownUser().mosqueId
+        && request.resource.data.squareId == ownUser().squareId
+        && request.resource.data.regionId == ownUser().regionId
+        && request.resource.data.courseId is string
+        && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.isActive == true
+        && request.resource.data.segmentId is string
+        && get(/databases/$(database)/documents/exam_segments/$(request.resource.data.segmentId)).data.isActive == true
+        && request.resource.data.courseId in get(/databases/$(database)/documents/exam_segments/$(request.resource.data.segmentId)).data.courseIds;
+    }
+
+    match /exam_questions/{examQuestionId} {
+      allow read: if signedIn() && resource.data.studentId == request.auth.uid;
+
+      // Written together with the examination, in the same batch.
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll([
+          'examId', 'studentId', 'questionId', 'order', 'type', 'question',
+          'options'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'examId', 'studentId', 'questionId', 'order', 'type', 'question',
+          'options'
+        ])
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.order is int
+        && request.resource.data.order >= 1
+        && request.resource.data.order <= 10
+        && examQuestionId == request.resource.data.examId + '_' + string(request.resource.data.order)
+        && request.resource.data.questionId is string
+        && request.resource.data.question is string
+        && request.resource.data.options is list
+        && getAfter(/databases/$(database)/documents/exams/$(request.resource.data.examId)).data.studentId == request.auth.uid
+        && getAfter(/databases/$(database)/documents/exams/$(request.resource.data.examId)).data.status == 'in_progress';
+    }
+
     function mosqueData(mosqueId) {
       return get(/databases/$(database)/documents/mosques/$(mosqueId)).data;
     }

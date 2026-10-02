@@ -11,6 +11,8 @@ class CourseLevelStyle {
     required this.badgeBorder,
     required this.chipBackground,
     required this.chipText,
+    required this.historyBadgeBackground,
+    required this.historyBadgeBorder,
   });
 
   /// The card on the home grid.
@@ -25,6 +27,10 @@ class CourseLevelStyle {
   final Color chipBackground;
   final Color chipText;
 
+  /// The icon badge on the exam history.
+  final Color historyBadgeBackground;
+  final Color historyBadgeBorder;
+
   static CourseLevelStyle of(CourseLevel level) {
     return switch (level) {
       CourseLevel.introductory => const CourseLevelStyle(
@@ -34,6 +40,8 @@ class CourseLevelStyle {
         badgeBorder: Color(0xB3FDE68A),
         chipBackground: Color(0xFFF0FDFA),
         chipText: Color(0xFF0F766E),
+        historyBadgeBackground: Color(0xFFEEFAF8),
+        historyBadgeBorder: Color(0xFFCCEFEA),
       ),
       CourseLevel.qualifying => const CourseLevelStyle(
         homeCardBackground: Color(0xFFF2F7FD),
@@ -42,6 +50,8 @@ class CourseLevelStyle {
         badgeBorder: Color(0xB3A5F3FC),
         chipBackground: Color(0xFFECFEFF),
         chipText: Color(0xFF0E7490),
+        historyBadgeBackground: Color(0xFFFFF6EB),
+        historyBadgeBorder: Color(0xFFFDE6CA),
       ),
       CourseLevel.advanced => const CourseLevelStyle(
         homeCardBackground: Color(0xFFFFFBF0),
@@ -50,6 +60,8 @@ class CourseLevelStyle {
         badgeBorder: Color(0xB3A7F3D0),
         chipBackground: Color(0xFFECFDF5),
         chipText: Color(0xFF065F46),
+        historyBadgeBackground: Color(0xFFF0F6FF),
+        historyBadgeBorder: Color(0xFFD5E6FE),
       ),
       CourseLevel.sanad => const CourseLevelStyle(
         homeCardBackground: Color(0xFFFDF2F2),
@@ -58,6 +70,8 @@ class CourseLevelStyle {
         badgeBorder: Color(0xB3FED7AA),
         chipBackground: Color(0xFFFFFBEB),
         chipText: Color(0xFF92400E),
+        historyBadgeBackground: Color(0xFFFAF5ED),
+        historyBadgeBorder: Color(0xFFEDE2CE),
       ),
     };
   }

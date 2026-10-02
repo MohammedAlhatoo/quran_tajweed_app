@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_assets.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -9,6 +10,10 @@ import '../../../../core/utils/helpers.dart';
 import '../../../../core/widgets/app_back_button.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/state_views.dart';
+import '../../../../router/route_names.dart';
+import '../../../auth/presentation/state/auth_cubit.dart';
+import '../../../auth/presentation/state/auth_state.dart';
+import '../../../exams/presentation/state/start_exam_cubit.dart';
 import '../../domain/entities/course.dart';
 import '../state/course_details_cubit.dart';
 
@@ -86,16 +91,47 @@ class _CourseDetails extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
             child: SizedBox(
               width: double.infinity,
-              child: AppButton(
-                label: 'بدء الاختبار',
-                // The examination flow is implemented in its own step.
-                onPressed: () =>
-                    showAppSnackBar(context, 'الاختبارات ستتوفر قريبًا.'),
-              ),
+              child: _StartExamButton(courseId: course.id),
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _StartExamButton extends StatelessWidget {
+  const _StartExamButton({required this.courseId});
+
+  final String courseId;
+
+  void _start(BuildContext context) {
+    final authState = context.read<AuthCubit>().state;
+    if (authState is! AuthAuthenticated) return;
+    context.read<StartExamCubit>().start(
+      student: authState.user,
+      courseId: courseId,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocConsumer<StartExamCubit, StartExamState>(
+      listener: (context, state) {
+        switch (state) {
+          case StartExamReady(:final exam):
+            context.push(RouteNames.studentExam(exam.id));
+          case StartExamError(:final message):
+            showAppSnackBar(context, message, isError: true);
+          case StartExamIdle() || StartExamLoading():
+            break;
+        }
+      },
+      builder: (context, state) => AppButton(
+        label: 'بدء الاختبار',
+        isLoading: state is StartExamLoading,
+        onPressed: () => _start(context),
+      ),
     );
   }
 }

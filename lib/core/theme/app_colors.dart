@@ -41,6 +41,18 @@ abstract final class AppColors {
   static const Color avatarBorder = Color(0x330D9488);
   static const Color iconTileBackground = Color(0xFFF0FDFA);
 
+  // Examination screen.
+  static const Color examHeader = Color(0xFF095C37);
+  static const Color examHeaderSubtitle = Color(0xFFD7F7E6);
+  static const Color mushafBackground = Color(0xFFF7F4EA);
+  static const Color mushafPage = Color(0xFFFFFDF6);
+  static const Color mushafBorder = Color(0xFFB68933);
+  static const Color mushafOutline = Color(0xFFD9B867);
+  static const Color mushafInnerBorder = Color(0xFFC8A34D);
+  static const Color mushafCorner = Color(0xFFA87E2B);
+  static const Color mushafPageNumber = Color(0xFF8C671B);
+  static const Color mushafFooterLine = Color(0x66DFCC99);
+
   static const Color danger = Color(0xFFEF4444);
   static const Color dangerBackground = Color(0xB3FEF2F2);
   static const Color dangerBorder = Color(0xFFFECACA);

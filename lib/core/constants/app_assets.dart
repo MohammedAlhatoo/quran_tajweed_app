@@ -7,6 +7,7 @@ abstract final class AppAssets {
   static const String eyeIcon = 'assets/icons/eye.svg';
   static const String bellIcon = 'assets/icons/bell.svg';
   static const String backIcon = 'assets/icons/back.svg';
+  static const String backLightIcon = 'assets/icons/back_light.svg';
   static const String chevronIcon = 'assets/icons/chevron.svg';
   static const String checkIcon = 'assets/icons/check.svg';
   static const String avatarIcon = 'assets/icons/avatar.svg';
@@ -25,6 +26,11 @@ abstract final class AppAssets {
 
   /// Course level icon on the courses list. [level] is the stored level value.
   static String levelIcon(String level) => 'assets/icons/level_$level.svg';
+
+  /// Course level icon on the exam history. [level] is the stored level
+  /// value.
+  static String historyLevelIcon(String level) =>
+      'assets/icons/history_level_$level.svg';
 
   static const String profileInfoIcon = 'assets/icons/profile_info.svg';
   static const String profileHistoryIcon = 'assets/icons/profile_history.svg';

@@ -19,7 +19,12 @@ import '../features/courses/presentation/pages/course_details_page.dart';
 import '../features/courses/presentation/pages/courses_page.dart';
 import '../features/courses/presentation/state/course_details_cubit.dart';
 import '../features/courses/presentation/state/courses_cubit.dart';
+import '../features/exams/domain/repositories/exams_repository.dart';
 import '../features/exams/presentation/pages/exam_history_page.dart';
+import '../features/exams/presentation/pages/exam_segment_page.dart';
+import '../features/exams/presentation/state/exam_cubit.dart';
+import '../features/exams/presentation/state/exam_history_cubit.dart';
+import '../features/exams/presentation/state/start_exam_cubit.dart';
 import '../features/home/presentation/pages/home_page.dart';
 import '../features/student/domain/repositories/student_profile_repository.dart';
 import '../features/student/presentation/pages/personal_info_page.dart';
@@ -77,9 +82,22 @@ abstract final class AppRouter {
   static List<RouteBase> _studentRoutes(AuthCubit authCubit) {
     return [
       StatefulShellRoute.indexedStack(
-        builder: (context, state, navigationShell) => BlocProvider(
-          create: (context) =>
-              CoursesCubit(context.read<CoursesRepository>())..load(),
+        builder: (context, state, navigationShell) => MultiBlocProvider(
+          providers: [
+            BlocProvider(
+              create: (context) =>
+                  CoursesCubit(context.read<CoursesRepository>())..load(),
+            ),
+            BlocProvider(
+              create: (context) {
+                final authState = authCubit.state;
+                return ExamHistoryCubit(
+                  context.read<ExamsRepository>(),
+                  authState is AuthAuthenticated ? authState.user.uid : '',
+                )..load();
+              },
+            ),
+          ],
           child: StudentShell(navigationShell: navigationShell),
         ),
         branches: [
@@ -119,12 +137,30 @@ abstract final class AppRouter {
       ),
       GoRoute(
         path: RouteNames.studentCourseDetailsPattern,
-        builder: (context, state) => BlocProvider(
-          create: (context) => CourseDetailsCubit(
-            context.read<CoursesRepository>(),
-            state.pathParameters['courseId']!,
-          )..load(),
+        builder: (context, state) => MultiBlocProvider(
+          providers: [
+            BlocProvider(
+              create: (context) => CourseDetailsCubit(
+                context.read<CoursesRepository>(),
+                state.pathParameters['courseId']!,
+              )..load(),
+            ),
+            BlocProvider(
+              create: (context) =>
+                  StartExamCubit(context.read<ExamsRepository>()),
+            ),
+          ],
           child: const CourseDetailsPage(),
+        ),
+      ),
+      GoRoute(
+        path: RouteNames.studentExamPattern,
+        builder: (context, state) => BlocProvider(
+          create: (context) => ExamCubit(
+            context.read<ExamsRepository>(),
+            state.pathParameters['examId']!,
+          )..load(),
+          child: const ExamSegmentPage(),
         ),
       ),
       GoRoute(
