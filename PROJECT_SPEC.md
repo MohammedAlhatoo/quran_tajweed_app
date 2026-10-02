@@ -29,6 +29,17 @@ The following decisions are approved and take priority over any other wording in
 6. **Quran text:** The Quran text is not stored in Firestore. It is static data inside the Flutter application (Hafs 'an Asim, Madinah Mushaf, 604 pages).
 7. **Segment selection:** Quran data is linked to Tajweed rule data for ayahs/segments and pages. This linking data is stored in Firestore (predefined segments in `exam_segments`, rule definitions in `tajweed_rules`). The system selects segments randomly according to the course type and its rules, taking Rule Density into account. This works in Phase 1 without AI.
 8. **Scoring:** Final score is out of 100 — 80% recitation, 20% theory questions. The approved pass mark is 70/100.
+9. **Target platforms:** Phase 1 targets Android and iOS. The project stays a multi-platform Flutter application and is not restricted to Android.
+10. **Application ID:** The current `applicationId` (`com.example.quran_tajweed_app`) is kept as is for now.
+11. **Routing:** `go_router` is the approved centralized routing solution.
+12. **Existing placeholder files:** The empty files under `lib/` (all except `firebase_options.dart`) are rewritten from scratch according to the architecture in sections 38–42, each in its own implementation step. No unnecessary demo content is kept.
+13. **Packages and structure:** No package or structure outside this specification is added without a clear reason.
+14. **Trusted backend for examinations:** Creating an examination (choosing the segment and questions) and grading the theory questions are approved in principle to run in Cloud Functions, because they cannot be made secure from the client. This is deferred: no Cloud Functions, Blaze upgrade, or paid setup is done now. Until then the examination is created from the student's device behind a repository interface that a backend can replace. Known interim limits: the random selection is not enforced by the security rules, and the one-examination-per-course checks are enforced only in the application.
+15. **Correct answers:** `correctAnswer` is not stored in `question_bank`. It is stored in a separate `question_answers` collection, keyed by the question ID, that students cannot read.
+16. **Examination affiliation:** Each `exams` document stores the student's `mosqueId`, `squareId`, and `regionId` at the time the examination is started.
+17. **Examination limits:** A student has at most one open examination per course; starting again continues it with the same segment and questions. A new examination in a course cannot be started while one in that course is awaiting review. Examinations have no time limit.
+18. **Segment selection algorithm:** Among the active segments of the course, each segment's weight is `ruleDensity × the sum of the weights (from course_rules) of the course rules present in the segment`. One segment is chosen at random with probability proportional to its weight. Segments with zero weight are not eligible.
+19. **Quran text and font:** No Quran text file or Mushaf font is added without explicit approval of its source. Until an approved text and font are added, the examination screen shows the segment reference without the ayah text.
 
 ---
 
@@ -353,6 +364,8 @@ The exact segment selection logic should be implemented as a service rather than
 
 Random segment selection is part of Phase 1 itself and is not deferred to Future Work. It works in Phase 1 without AI.
 
+Selection algorithm: among the active segments whose `courseIds` contain the course, each segment's weight is `ruleDensity × the sum of the course_rules weights of the course rules present in the segment's ruleIds`. One segment is chosen at random with probability proportional to its weight. A segment whose weight is zero is not eligible. If no segment is eligible, the examination cannot be started.
+
 The random selection depends on:
 
 * The course level.
@@ -483,6 +496,14 @@ approved
 Passing and failing are expressed in a separate result field (`passed` / `failed`), not in the status.
 
 A student whose result is `failed` can retake the examination later through a new attempt / new examination. The previous approved examination is not reopened.
+
+An examination is created with the status `in_progress`.
+
+A student has at most one open examination (`draft` or `in_progress`) per course. Starting an examination in a course that already has an open one continues it with the same segment and questions.
+
+A student cannot start a new examination in a course while an examination in that course is awaiting review (`submitted`, `pending_review`, or `under_review`).
+
+Examinations have no time limit.
 
 The exact status transitions must be controlled by the application.
 
@@ -623,6 +644,7 @@ course_rules
 exams
 exam_segments
 question_bank
+question_answers
 exam_questions
 submissions
 evaluations
@@ -796,6 +818,9 @@ studentId
 courseId
 segmentId
 status
+mosqueId
+squareId
+regionId
 startedAt
 submittedAt
 reviewedAt
@@ -803,6 +828,8 @@ approvedAt
 createdAt
 updatedAt
 ```
+
+`mosqueId`, `squareId`, and `regionId` are copied from the student's `users` document when the examination is started. They let supervisors and region officers query the examinations of their square or region, and let the security rules restrict access to them.
 
 ---
 
@@ -855,16 +882,23 @@ ruleId
 type
 question
 options
-correctAnswer
 difficulty
 isActive
 createdAt
 updatedAt
 ```
 
+The correct answer is not stored in `question_bank`, because Firestore cannot hide a single field of a readable document. It is stored in a separate collection, with the same document ID as the question:
+
+```text
+question_answers/{questionId}
+
+correctAnswer
+```
+
 `correctAnswer` must not be sent to the student application during the examination, and must not be included in any examination data the student can read.
 
-`correctAnswer` must be protected so that the student cannot access it directly through Firestore.
+Students cannot read `question_answers` through Firestore.
 
 ---
 
@@ -873,6 +907,22 @@ updatedAt
 `exam_questions` is the collection for the questions selected for a specific examination. Each record is linked to the examination by `examId`.
 
 When the examination is created, the system selects 10 questions from `question_bank` according to the course rules and the approved criteria, then saves the selected questions in `exam_questions`.
+
+Selection: 10 active questions of the course, spread across the Tajweed rules. If fewer than 10 are available, the examination cannot be started.
+
+```text
+exam_questions/{examId}_{order}
+
+examId
+studentId
+questionId
+order
+type
+question
+options
+```
+
+Each record is a copy of the question as shown to the student, without the correct answer. `order` is 1–10. `studentId` is stored so the security rules can restrict each record to its student.
 
 The selected questions for an individual examination should be associated with that examination.
 
@@ -1189,7 +1239,7 @@ Phase 1 must use flutter_bloc and must not mix multiple state-management solutio
 
 # 42. Routing
 
-The project should have centralized routing.
+The project should have centralized routing, implemented with `go_router`.
 
 Structure:
 
@@ -1536,9 +1586,13 @@ Project initialized.
 PROJECT_SPEC.md created.
 Phase 1 decisions approved (see "Approved Phase 1 Decisions").
 Phase 2 and Phase 3 are Future Work only.
-Implementation has not started.
+Project analysis completed (Implementation Order step 1).
+Architecture confirmed (Implementation Order step 2).
+Implementation Order steps 3-9 implemented.
 AI is not part of Phase 1.
 Figma MCP is connected to Claude Code.
 ```
 
-The next step is to review this specification and confirm the architecture before creating the production folder structure or implementing features.
+Open items: the approved Quran text and Mushaf font have not been added, and Cloud Functions are deferred (see Approved Phase 1 Decisions 14 and 19).
+
+The next step is Implementation Order step 10: Recording.
