@@ -32,6 +32,10 @@ abstract final class RouteNames {
       '/student/courses/$courseId';
 
   static const String supervisor = '/supervisor';
+  static const String supervisorExamPattern = '/supervisor/exams/:examId';
+
+  static String supervisorExam(String examId) => '/supervisor/exams/$examId';
+
   static const String region = '/region';
   static const String admin = '/admin';
 }

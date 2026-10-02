@@ -20,6 +20,11 @@ class StorageService {
         .putFile(file, SettableMetadata(contentType: contentType));
   }
 
+  /// Downloads the object at [path] into [file], replacing its contents.
+  Future<void> downloadFile({required String path, required File file}) async {
+    await _storage.ref(path).writeToFile(file);
+  }
+
   Future<bool> exists(String path) async {
     try {
       await _storage.ref(path).getMetadata();

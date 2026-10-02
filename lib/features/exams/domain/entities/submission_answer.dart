@@ -24,6 +24,21 @@ class SubmissionAnswer {
     'answer': answer,
   };
 
+  /// Returns null when a field is missing or invalid.
+  static SubmissionAnswer? fromMap(Map<dynamic, dynamic> data) {
+    final order = data['order'];
+    final questionId = data['questionId'];
+    final answer = data['answer'];
+    if (order is! int || questionId is! String || answer is! String) {
+      return null;
+    }
+    return SubmissionAnswer(
+      order: order,
+      questionId: questionId,
+      answer: answer,
+    );
+  }
+
   /// The answers to [questions], in their order. [chosen] holds the chosen
   /// option of each question, keyed by the ID of its `exam_questions` record.
   ///

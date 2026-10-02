@@ -1544,16 +1544,11 @@ The implementation should follow this general order:
 10. Recording
 11. Theory Questions
 12. Submission
-13. Supervisor Module
-14. Evaluation
-15. Score Calculation
-16. Certificates
-17. Notifications
-18. Region Officer Module
-19. General Admin Module
-20. Security Rules
-21. Testing
-22. Phase 1 Deployment
+13. Supervisor Review: Recitation Score, Theory Score, Final Score, Evaluation Approval
+14. Notifications, Certificates, Region Officer Module, General Admin Module, Reports, Account and Role Management
+15. Security Rules
+16. Testing
+17. Phase 1 Deployment
 ```
 
 AI must not be implemented before Phase 1 is completed and tested.
@@ -1588,7 +1583,7 @@ Phase 1 decisions approved (see "Approved Phase 1 Decisions").
 Phase 2 and Phase 3 are Future Work only.
 Project analysis completed (Implementation Order step 1).
 Architecture confirmed (Implementation Order step 2).
-Implementation Order steps 3-12 implemented.
+Implementation Order steps 3-13 implemented.
 AI is not part of Phase 1.
 Figma MCP is connected to Claude Code.
 ```
@@ -1599,6 +1594,8 @@ Recording (step 10): the recitation is uploaded to `exam_recordings/{examId}/rec
 
 Theory Questions (step 11): the ten questions are read from `exam_questions` and shown one per screen, opened from the examination screen once the recitation is uploaded. The answers are kept in memory until submission and are lost if the app is closed before it. The whole question text is shown in one style, because `question` is a single string.
 
-Submission (step 12): the student reviews the recording status and the ten answers, then submits. One batch creates `submissions/{examId}` and moves the examination from `in_progress` to `pending_review` with `submittedAt`. `recordingUrl` holds the Storage path of the recording, not a download link. Each item of `answers` is `{order, questionId, answer}`. The review and confirmation screens have no Figma frame and follow the style of the questions screen. Deferred to steps 13-15: creating the `evaluations` record and calculating `theoryScore`, because the student can neither read `question_answers` nor write `evaluations` and Cloud Functions are deferred. The updated `firestore.rules` are not deployed yet, and submission has not been tested against Firebase.
+Submission (step 12): the student reviews the recording status and the ten answers, then submits. One batch creates `submissions/{examId}` and moves the examination from `in_progress` to `pending_review` with `submittedAt`. `recordingUrl` holds the Storage path of the recording, not a download link. Each item of `answers` is `{order, questionId, answer}`. The review and confirmation screens have no Figma frame and follow the style of the questions screen. Deferred to step 13: creating the `evaluations` record and calculating `theoryScore`, because the student can neither read `question_answers` nor write `evaluations` and Cloud Functions are deferred. The updated `firestore.rules` are not deployed yet, and submission has not been tested against Firebase.
 
-The next step is Implementation Order step 13: Supervisor Module.
+Supervisor Review (step 13): the supervisor's home lists the examinations of the square that await review, oldest submission first. Opening one shows the student, the course, the segment reference, the recitation (downloaded from Storage, then played) and the ten answers, each marked against its correct answer. The supervisor enters the recitation score out of 80; the theory score out of 20 is calculated from the student's answers and `question_answers` (two marks per question), and the final score out of 100 and the result (pass mark 70) are shown. Approving the result writes one batch: it creates `evaluations/{examId}` with `status = approved` and moves the examination to `approved` with `reviewedAt` and `approvedAt`. Differences from section 33, by decision: the `evaluations` record is created when the supervisor approves, not when the student submits, so no `pending` evaluation exists; `feedback` is stored as null because no feedback field is shown yet. No examination is moved to `under_review`. Interim limit: the theory score is calculated on the supervisor's device, so an active supervisor can read `question_answers` one document at a time, and the security rules check the range and the arithmetic of the scores but not that `theoryScore` matches the answers. The supervisor screens were built in the style of the existing screens, without inspecting Figma, because the Figma MCP call limit was reached; they must be compared with the approved frames later. Not built: Supervisor Dashboard statistics, Student History, the student's result screen. The updated `firestore.rules` and `storage.rules` are not deployed yet, and the module has not been tested against Firebase or on a device.
+
+The next step is Implementation Order step 14: Notifications, Certificates, Region Officer Module, General Admin Module, Reports, Account and Role Management.

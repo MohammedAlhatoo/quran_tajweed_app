@@ -9,10 +9,20 @@ service firebase.storage {
       return firestore.get(/databases/(default)/documents/exams/$(examId)).data;
     }
 
+    function ownUser() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+
     // One recitation recording per examination. Re-recording overwrites it.
     match /exam_recordings/{examId}/recitation.m4a {
       allow read: if signedIn()
         && examData(examId).studentId == request.auth.uid;
+
+      // An active square supervisor listens to the recordings of the square.
+      allow read: if signedIn()
+        && ownUser().role == 'square_supervisor'
+        && ownUser().isActive == true
+        && ownUser().squareId == examData(examId).squareId;
 
       // Only the examination's student, and only until it is submitted.
       allow create, update: if signedIn()

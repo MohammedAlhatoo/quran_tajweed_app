@@ -52,17 +52,40 @@ service cloud.firestore {
       allow read: if signedIn();
     }
 
-    // Correct answers. No client access.
+    // Correct answers. Students never read them. An active supervisor reads
+    // one at a time to grade the theory answers of a submitted examination.
     match /question_answers/{questionId} {
-      allow read, write: if false;
+      allow get: if isActiveSupervisor();
     }
 
     function ownUser() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    // An active square supervisor reviewing the examinations of [squareId].
+    function isActiveSupervisor() {
+      return signedIn()
+        && ownUser().role == 'square_supervisor'
+        && ownUser().isActive == true;
+    }
+
+    function isSupervisorOf(squareId) {
+      return isActiveSupervisor() && ownUser().squareId == squareId;
+    }
+
+    function awaitingReview(status) {
+      return status in ['submitted', 'pending_review', 'under_review'];
+    }
+
+    function examData(examId) {
+      return get(/databases/$(database)/documents/exams/$(examId)).data;
+    }
+
     match /exams/{examId} {
       allow read: if signedIn() && resource.data.studentId == request.auth.uid;
+
+      // Queries must filter on squareId.
+      allow read: if isSupervisorOf(resource.data.squareId);
 
       // A student starts an examination for themselves. The affiliation must
       // match the student's account, and the course and segment must be
@@ -110,6 +133,58 @@ service cloud.firestore {
         && request.resource.data.submittedAt == request.time
         && request.resource.data.updatedAt == request.time
         && existsAfter(/databases/$(database)/documents/submissions/$(examId));
+
+      // The supervisor approves the result: only the status and the
+      // timestamps change, in the same batch that creates the evaluation.
+      allow update: if isSupervisorOf(resource.data.squareId)
+        && awaitingReview(resource.data.status)
+        && request.resource.data.status == 'approved'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'reviewedAt', 'approvedAt', 'updatedAt'
+        ])
+        && request.resource.data.reviewedAt == request.time
+        && request.resource.data.approvedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/evaluations/$(examId));
+    }
+
+    // One evaluation per examination, with the examination's ID, created when
+    // the supervisor approves the result. It is never changed afterwards.
+    // Not enforced here: that theoryScore matches the student's answers and
+    // question_answers.
+    match /evaluations/{evaluationId} {
+      allow get: if isSupervisorOf(examData(evaluationId).squareId);
+
+      allow create: if isSupervisorOf(examData(evaluationId).squareId)
+        && awaitingReview(examData(evaluationId).status)
+        && request.resource.data.keys().hasAll([
+          'examId', 'supervisorId', 'recitationScore', 'theoryScore',
+          'finalScore', 'result', 'feedback', 'status', 'reviewedAt',
+          'approvedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'examId', 'supervisorId', 'recitationScore', 'theoryScore',
+          'finalScore', 'result', 'feedback', 'status', 'reviewedAt',
+          'approvedAt'
+        ])
+        && request.resource.data.examId == evaluationId
+        && request.resource.data.supervisorId == request.auth.uid
+        && request.resource.data.recitationScore is int
+        && request.resource.data.recitationScore >= 0
+        && request.resource.data.recitationScore <= 80
+        && request.resource.data.theoryScore is int
+        && request.resource.data.theoryScore >= 0
+        && request.resource.data.theoryScore <= 20
+        && request.resource.data.finalScore
+          == request.resource.data.recitationScore + request.resource.data.theoryScore
+        && request.resource.data.result
+          == (request.resource.data.finalScore >= 70 ? 'passed' : 'failed')
+        && (request.resource.data.feedback == null
+          || request.resource.data.feedback is string)
+        && request.resource.data.status == 'approved'
+        && request.resource.data.reviewedAt == request.time
+        && request.resource.data.approvedAt == request.time
+        && getAfter(/databases/$(database)/documents/exams/$(evaluationId)).data.status == 'approved';
     }
 
     // One submission per examination, with the examination's ID. It is never
@@ -118,6 +193,8 @@ service cloud.firestore {
     // questions.
     match /submissions/{submissionId} {
       allow read: if signedIn() && resource.data.studentId == request.auth.uid;
+
+      allow get: if isSupervisorOf(examData(submissionId).squareId);
 
       allow create: if signedIn()
         && request.resource.data.keys().hasAll([
@@ -143,6 +220,9 @@ service cloud.firestore {
 
     match /exam_questions/{examQuestionId} {
       allow read: if signedIn() && resource.data.studentId == request.auth.uid;
+
+      // One record at a time, by ID.
+      allow get: if isSupervisorOf(examData(resource.data.examId).squareId);
 
       // Written together with the examination, in the same batch.
       allow create: if signedIn()
@@ -172,6 +252,10 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow get: if signedIn() && request.auth.uid == uid;
+
+      // A supervisor reads the students of their square.
+      allow get: if resource.data.role == 'student'
+        && isSupervisorOf(resource.data.squareId);
 
       // Self-registration always creates an active student whose square and
       // region come from the chosen mosque.

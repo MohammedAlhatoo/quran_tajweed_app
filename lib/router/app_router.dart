@@ -40,7 +40,13 @@ import '../features/student/presentation/pages/personal_info_page.dart';
 import '../features/student/presentation/pages/profile_page.dart';
 import '../features/student/presentation/pages/student_shell.dart';
 import '../features/student/presentation/state/mosque_name_cubit.dart';
+import '../features/supervisor/domain/repositories/review_repository.dart';
+import '../features/supervisor/presentation/pages/exam_review_page.dart';
 import '../features/supervisor/presentation/pages/supervisor_home_page.dart';
+import '../features/supervisor/presentation/state/evaluation_cubit.dart';
+import '../features/supervisor/presentation/state/exam_review_cubit.dart';
+import '../features/supervisor/presentation/state/pending_exams_cubit.dart';
+import '../features/supervisor/presentation/state/recitation_playback_cubit.dart';
 import 'route_names.dart';
 
 abstract final class AppRouter {
@@ -70,10 +76,7 @@ abstract final class AppRouter {
           ),
         ),
         ..._studentRoutes(authCubit),
-        GoRoute(
-          path: RouteNames.supervisor,
-          builder: (context, state) => const SupervisorHomePage(),
-        ),
+        ..._supervisorRoutes(authCubit),
         GoRoute(
           path: RouteNames.region,
           builder: (context, state) => const RegionHomePage(),
@@ -254,6 +257,81 @@ abstract final class AppRouter {
           },
           child: const PersonalInfoPage(),
         ),
+      ),
+    ];
+  }
+
+  /// The square supervisor's area: the examinations awaiting review, and the
+  /// review of one of them.
+  static List<RouteBase> _supervisorRoutes(AuthCubit authCubit) {
+    // The home's cubit, kept so an approved examination can leave the list.
+    PendingExamsCubit? pendingExams;
+
+    return [
+      GoRoute(
+        path: RouteNames.supervisor,
+        builder: (context, state) => MultiBlocProvider(
+          providers: [
+            BlocProvider(
+              create: (context) =>
+                  CoursesCubit(context.read<CoursesRepository>())..load(),
+            ),
+            BlocProvider(
+              create: (context) {
+                final authState = authCubit.state;
+                return pendingExams = PendingExamsCubit(
+                  context.read<ReviewRepository>(),
+                  authState is AuthAuthenticated
+                      ? authState.user.squareId
+                      : null,
+                )..load();
+              },
+            ),
+          ],
+          child: const SupervisorHomePage(),
+        ),
+      ),
+      GoRoute(
+        path: RouteNames.supervisorExamPattern,
+        builder: (context, state) {
+          final examId = state.pathParameters['examId']!;
+          final authState = authCubit.state;
+          return MultiBlocProvider(
+            providers: [
+              BlocProvider(
+                create: (context) => ExamReviewCubit(
+                  reviews: context.read<ReviewRepository>(),
+                  exams: context.read<ExamsRepository>(),
+                  courses: context.read<CoursesRepository>(),
+                  examId: examId,
+                )..load(),
+              ),
+              BlocProvider(
+                create: (context) => RecitationPlaybackCubit(
+                  repository: context.read<ReviewRepository>(),
+                  player: DeviceRecitationPlayer(),
+                  examId: examId,
+                ),
+              ),
+              BlocProvider(
+                create: (context) => EvaluationCubit(
+                  repository: context.read<ReviewRepository>(),
+                  examId: examId,
+                  supervisorId: authState is AuthAuthenticated
+                      ? authState.user.uid
+                      : '',
+                ),
+              ),
+            ],
+            child: ExamReviewPage(
+              onApproved: () {
+                final pending = pendingExams;
+                if (pending != null && !pending.isClosed) pending.load();
+                context.go(RouteNames.supervisor);
+              },
+            ),
+          );
+        },
       ),
     ];
   }

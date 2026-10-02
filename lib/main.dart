@@ -23,6 +23,8 @@ import 'features/questions/data/repositories/firestore_questions_repository.dart
 import 'features/questions/domain/repositories/questions_repository.dart';
 import 'features/student/data/repositories/firestore_student_profile_repository.dart';
 import 'features/student/domain/repositories/student_profile_repository.dart';
+import 'features/supervisor/data/repositories/firebase_review_repository.dart';
+import 'features/supervisor/domain/repositories/review_repository.dart';
 import 'firebase_options.dart';
 import 'router/app_router.dart';
 
@@ -84,6 +86,10 @@ class _QuranTajweedAppState extends State<QuranTajweedApp> {
         ),
         RepositoryProvider<StudentProfileRepository>(
           create: (_) => FirestoreStudentProfileRepository(),
+        ),
+        RepositoryProvider<ReviewRepository>(
+          create: (_) =>
+              FirebaseReviewRepository(storageService: StorageService()),
         ),
       ],
       child: BlocProvider<AuthCubit>.value(
