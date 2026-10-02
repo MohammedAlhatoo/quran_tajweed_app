@@ -4,12 +4,15 @@ import 'package:firebase_core/firebase_core.dart';
 class AppFailure implements Exception {
   const AppFailure(this.message);
 
-  /// Maps a Firestore error to a user-facing failure.
+  /// Maps a Firestore or Storage error to a user-facing failure.
   factory AppFailure.fromFirebase(FirebaseException e) {
     return switch (e.code) {
-      'unavailable' || 'deadline-exceeded' => const AppFailure(
+      'unavailable' ||
+      'deadline-exceeded' ||
+      'retry-limit-exceeded' => const AppFailure(
         'تعذّر الاتصال. تحقق من الإنترنت وحاول مرة أخرى.',
       ),
+      'unauthorized' => const AppFailure('لا تملك صلاحية تنفيذ هذا الإجراء.'),
       'permission-denied' => const AppFailure(
         'لا تملك صلاحية عرض هذه البيانات.',
       ),

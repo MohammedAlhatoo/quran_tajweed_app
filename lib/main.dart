@@ -6,14 +6,17 @@ import 'package:go_router/go_router.dart';
 
 import 'core/constants/app_constants.dart';
 import 'core/services/auth_service.dart';
+import 'core/services/storage_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/data/repositories/firebase_auth_repository.dart';
 import 'features/auth/domain/repositories/auth_repository.dart';
 import 'features/auth/presentation/state/auth_cubit.dart';
 import 'features/courses/data/repositories/firestore_courses_repository.dart';
 import 'features/courses/domain/repositories/courses_repository.dart';
+import 'features/exams/data/repositories/firebase_recording_repository.dart';
 import 'features/exams/data/repositories/firestore_exams_repository.dart';
 import 'features/exams/domain/repositories/exams_repository.dart';
+import 'features/exams/domain/repositories/recording_repository.dart';
 import 'features/student/data/repositories/firestore_student_profile_repository.dart';
 import 'features/student/domain/repositories/student_profile_repository.dart';
 import 'firebase_options.dart';
@@ -64,6 +67,10 @@ class _QuranTajweedAppState extends State<QuranTajweedApp> {
         ),
         RepositoryProvider<ExamsRepository>(
           create: (_) => FirestoreExamsRepository(),
+        ),
+        RepositoryProvider<RecordingRepository>(
+          create: (_) =>
+              FirebaseRecordingRepository(storageService: StorageService()),
         ),
         RepositoryProvider<StudentProfileRepository>(
           create: (_) => FirestoreStudentProfileRepository(),

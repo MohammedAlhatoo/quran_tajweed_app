@@ -52,6 +52,12 @@ abstract final class AppColors {
   static const Color mushafCorner = Color(0xFFA87E2B);
   static const Color mushafPageNumber = Color(0xFF8C671B);
   static const Color mushafFooterLine = Color(0x66DFCC99);
+  static const List<Color> recordButtonGradient = [
+    Color(0xFF095C37),
+    Color(0xFF128D57),
+  ];
+  static const Color recordButtonGlow = Color(0x33128D57);
+  static const Color recordButtonShadow = Color(0x4D0C7345);
 
   static const Color danger = Color(0xFFEF4444);
   static const Color dangerBackground = Color(0xB3FEF2F2);

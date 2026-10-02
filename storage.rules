@@ -1,0 +1,26 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function examData(examId) {
+      return firestore.get(/databases/(default)/documents/exams/$(examId)).data;
+    }
+
+    // One recitation recording per examination. Re-recording overwrites it.
+    match /exam_recordings/{examId}/recitation.m4a {
+      allow read: if signedIn()
+        && examData(examId).studentId == request.auth.uid;
+
+      // Only the examination's student, and only until it is submitted.
+      allow create, update: if signedIn()
+        && examData(examId).studentId == request.auth.uid
+        && examData(examId).status == 'in_progress'
+        && request.resource.size > 0
+        && request.resource.size <= 50 * 1024 * 1024
+        && request.resource.contentType == 'audio/mp4';
+    }
+  }
+}

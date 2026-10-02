@@ -8,11 +8,14 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/state_views.dart';
 import '../../domain/entities/exam_segment.dart';
+import '../../domain/entities/exam_status.dart';
 import '../state/exam_cubit.dart';
 import '../widgets/mushaf_frame.dart';
+import '../widgets/recording_controls.dart';
 
 /// The examination screen: the assigned Quran segment inside a Mushaf page
-/// frame. Recording and the theory questions are added in their own steps.
+/// frame, above the recitation recording bar. The theory questions are added
+/// in their own step.
 class ExamSegmentPage extends StatelessWidget {
   const ExamSegmentPage({super.key});
 
@@ -44,17 +47,28 @@ class ExamSegmentPage extends StatelessWidget {
               message: message,
               onRetry: context.read<ExamCubit>().load,
             ),
-            ExamLoaded(:final segment) => SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
+            ExamLoaded(:final exam, :final segment) => Column(
+              children: [
+                Expanded(
+                  child: SafeArea(
+                    bottom: exam.status != ExamStatus.inProgress,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      child: MushafFrame(
+                        page: segment.page,
+                        child: const _SegmentTextUnavailable(),
+                      ),
+                    ),
+                  ),
                 ),
-                child: MushafFrame(
-                  page: segment.page,
-                  child: const _SegmentTextUnavailable(),
-                ),
-              ),
+                // The recording can change only until the examination is
+                // submitted.
+                if (exam.status == ExamStatus.inProgress)
+                  const RecordingControls(),
+              ],
             ),
           },
         );

@@ -19,11 +19,14 @@ import '../features/courses/presentation/pages/course_details_page.dart';
 import '../features/courses/presentation/pages/courses_page.dart';
 import '../features/courses/presentation/state/course_details_cubit.dart';
 import '../features/courses/presentation/state/courses_cubit.dart';
+import '../features/exams/data/services/device_recitation_audio.dart';
 import '../features/exams/domain/repositories/exams_repository.dart';
+import '../features/exams/domain/repositories/recording_repository.dart';
 import '../features/exams/presentation/pages/exam_history_page.dart';
 import '../features/exams/presentation/pages/exam_segment_page.dart';
 import '../features/exams/presentation/state/exam_cubit.dart';
 import '../features/exams/presentation/state/exam_history_cubit.dart';
+import '../features/exams/presentation/state/recording_cubit.dart';
 import '../features/exams/presentation/state/start_exam_cubit.dart';
 import '../features/home/presentation/pages/home_page.dart';
 import '../features/student/domain/repositories/student_profile_repository.dart';
@@ -155,11 +158,23 @@ abstract final class AppRouter {
       ),
       GoRoute(
         path: RouteNames.studentExamPattern,
-        builder: (context, state) => BlocProvider(
-          create: (context) => ExamCubit(
-            context.read<ExamsRepository>(),
-            state.pathParameters['examId']!,
-          )..load(),
+        builder: (context, state) => MultiBlocProvider(
+          providers: [
+            BlocProvider(
+              create: (context) => ExamCubit(
+                context.read<ExamsRepository>(),
+                state.pathParameters['examId']!,
+              )..load(),
+            ),
+            BlocProvider(
+              create: (context) => RecordingCubit(
+                repository: context.read<RecordingRepository>(),
+                recorder: DeviceRecitationRecorder(),
+                player: DeviceRecitationPlayer(),
+                examId: state.pathParameters['examId']!,
+              )..load(),
+            ),
+          ],
           child: const ExamSegmentPage(),
         ),
       ),
