@@ -59,6 +59,17 @@ abstract final class AppColors {
   static const Color recordButtonGlow = Color(0x33128D57);
   static const Color recordButtonShadow = Color(0x4D0C7345);
 
+  // Theory questions screen.
+  static const Color questionsAction = Color(0xFF0D6E66);
+  static const Color questionsActionShadow = Color(0x330D6E66);
+  static const Color questionPromptBackground = Color(0xBFF9FAFB);
+  static const Color optionBorder = Color(0xE6E5E7EB);
+  static const Color optionMarkBorder = Color(0xFFD1D5DB);
+  static const Color optionSelectedBackground = Color(0xFFEEF7F4);
+  static const Color optionSelectedBorder = Color(0xFF3DB89C);
+  static const Color optionSelectedMark = Color(0xFF1DA584);
+  static const Color optionSelectedText = Color(0xFF0F766E);
+
   static const Color danger = Color(0xFFEF4444);
   static const Color dangerBackground = Color(0xB3FEF2F2);
   static const Color dangerBorder = Color(0xFFFECACA);

@@ -12,6 +12,8 @@ abstract final class AppAssets {
   static const String checkIcon = 'assets/icons/check.svg';
   static const String avatarIcon = 'assets/icons/avatar.svg';
   static const String micIcon = 'assets/icons/mic.svg';
+  static const String questionsBackIcon = 'assets/icons/questions_back.svg';
+  static const String optionCheckIcon = 'assets/icons/option_check.svg';
 
   static const String navHomeIcon = 'assets/icons/nav_home.svg';
   static const String navCoursesIcon = 'assets/icons/nav_courses.svg';

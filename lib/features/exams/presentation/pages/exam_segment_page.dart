@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_assets.dart';
 import '../../../../core/constants/surah_names.dart';
@@ -9,13 +10,17 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/state_views.dart';
 import '../../domain/entities/exam_segment.dart';
 import '../../domain/entities/exam_status.dart';
+import '../../../../router/route_names.dart';
+import '../../../questions/presentation/state/questions_cubit.dart';
+import '../../../questions/presentation/widgets/exam_action_button.dart';
 import '../state/exam_cubit.dart';
+import '../state/recording_cubit.dart';
 import '../widgets/mushaf_frame.dart';
 import '../widgets/recording_controls.dart';
 
 /// The examination screen: the assigned Quran segment inside a Mushaf page
-/// frame, above the recitation recording bar. The theory questions are added
-/// in their own step.
+/// frame, above the recitation recording bar. The theory questions open from
+/// here once the recitation is uploaded.
 class ExamSegmentPage extends StatelessWidget {
   const ExamSegmentPage({super.key});
 
@@ -64,10 +69,12 @@ class ExamSegmentPage extends StatelessWidget {
                     ),
                   ),
                 ),
-                // The recording can change only until the examination is
-                // submitted.
-                if (exam.status == ExamStatus.inProgress)
+                // The recording and the answers can change only until the
+                // examination is submitted.
+                if (exam.status == ExamStatus.inProgress) ...[
+                  _QuestionsEntry(examId: exam.id),
                   const RecordingControls(),
+                ],
               ],
             ),
           },
@@ -111,6 +118,34 @@ class _SegmentTitle extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Opens the theory questions once the recitation is uploaded.
+class _QuestionsEntry extends StatelessWidget {
+  const _QuestionsEntry({required this.examId});
+
+  final String examId;
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocSelector<RecordingCubit, RecordingState, bool>(
+      selector: (state) => state.status == RecordingStatus.uploaded,
+      builder: (context, uploaded) {
+        if (!uploaded) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+          child: ExamActionButton(
+            label: 'الانتقال إلى الأسئلة',
+            onPressed: () => context.push(
+              RouteNames.studentExamQuestions(examId),
+              extra: context.read<QuestionsCubit>(),
+            ),
+          ),
+        );
+      },
     );
   }
 }

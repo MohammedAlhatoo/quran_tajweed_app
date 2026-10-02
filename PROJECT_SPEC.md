@@ -1588,7 +1588,7 @@ Phase 1 decisions approved (see "Approved Phase 1 Decisions").
 Phase 2 and Phase 3 are Future Work only.
 Project analysis completed (Implementation Order step 1).
 Architecture confirmed (Implementation Order step 2).
-Implementation Order steps 3-10 implemented.
+Implementation Order steps 3-11 implemented.
 AI is not part of Phase 1.
 Figma MCP is connected to Claude Code.
 ```
@@ -1597,4 +1597,6 @@ Open items: the approved Quran text and Mushaf font have not been added, and Clo
 
 Recording (step 10): the recitation is uploaded to `exam_recordings/{examId}/recitation.m4a`, and re-recording is allowed while the examination is `in_progress`. `recordingUrl` is written to `submissions` in step 12. `storage.rules` is not deployed yet, and recording has not been tested on a device.
 
-The next step is Implementation Order step 11: Theory Questions.
+Theory Questions (step 11): the ten questions are read from `exam_questions` and shown one per screen, opened from the examination screen once the recitation is uploaded. The answers are kept in memory until submission and are lost if the app is closed before it. The whole question text is shown in one style, because `question` is a single string. The button after the last question is disabled until step 12 adds the submission review.
+
+The next step is Implementation Order step 12: Submission.

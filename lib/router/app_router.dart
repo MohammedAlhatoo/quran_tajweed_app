@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
@@ -29,6 +29,9 @@ import '../features/exams/presentation/state/exam_history_cubit.dart';
 import '../features/exams/presentation/state/recording_cubit.dart';
 import '../features/exams/presentation/state/start_exam_cubit.dart';
 import '../features/home/presentation/pages/home_page.dart';
+import '../features/questions/domain/repositories/questions_repository.dart';
+import '../features/questions/presentation/pages/questions_page.dart';
+import '../features/questions/presentation/state/questions_cubit.dart';
 import '../features/student/domain/repositories/student_profile_repository.dart';
 import '../features/student/presentation/pages/personal_info_page.dart';
 import '../features/student/presentation/pages/profile_page.dart';
@@ -174,9 +177,27 @@ abstract final class AppRouter {
                 examId: state.pathParameters['examId']!,
               )..load(),
             ),
+            // Kept here so the answers survive leaving the questions screen.
+            BlocProvider(
+              create: (context) => _questionsCubit(context, authCubit, state),
+            ),
           ],
           child: const ExamSegmentPage(),
         ),
+      ),
+      GoRoute(
+        path: RouteNames.studentExamQuestionsPattern,
+        builder: (context, state) {
+          // The examination screen passes its cubit along with the answers.
+          final shared = state.extra;
+          return shared is QuestionsCubit
+              ? BlocProvider.value(value: shared, child: const QuestionsPage())
+              : BlocProvider(
+                  create: (context) =>
+                      _questionsCubit(context, authCubit, state),
+                  child: const QuestionsPage(),
+                );
+        },
       ),
       GoRoute(
         path: RouteNames.studentPersonalInfo,
@@ -192,6 +213,19 @@ abstract final class AppRouter {
         ),
       ),
     ];
+  }
+
+  static QuestionsCubit _questionsCubit(
+    BuildContext context,
+    AuthCubit authCubit,
+    GoRouterState state,
+  ) {
+    final authState = authCubit.state;
+    return QuestionsCubit(
+      context.read<QuestionsRepository>(),
+      examId: state.pathParameters['examId']!,
+      studentId: authState is AuthAuthenticated ? authState.user.uid : '',
+    )..load();
   }
 
   /// The root of the area a role is allowed to open.
