@@ -70,6 +70,20 @@ abstract final class AppColors {
   static const Color optionSelectedMark = Color(0xFF1DA584);
   static const Color optionSelectedText = Color(0xFF0F766E);
 
+  // Splash and onboarding. The backdrops continue the artwork's edge colors.
+  static const List<Color> splashBackdrop = [
+    Color(0xFF050D10),
+    Color(0xFF1A2E31),
+    Color(0xFF050B0D),
+  ];
+  static const List<Color> onboardingBackdrop = [
+    Color(0xFF3D3D3A),
+    Color(0xFF0B1915),
+    Color(0xFF091E1A),
+  ];
+  static const Color onboardingAction = Color(0xFF185D4D);
+  static const Color onboardingActionBorder = Color(0xFF1E6757);
+
   static const Color danger = Color(0xFFEF4444);
   static const Color dangerBackground = Color(0xB3FEF2F2);
   static const Color dangerBorder = Color(0xFFFECACA);

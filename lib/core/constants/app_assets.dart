@@ -2,7 +2,12 @@ abstract final class AppAssets {
   static const String logo = 'assets/images/logo.svg';
   static const String mosqueSilhouette = 'assets/images/mosque_silhouette.svg';
 
-  static const String mailIcon = 'assets/icons/mail.svg';
+  /// Whole screens exported from the design. `Onboarding.png` is the same
+  /// screen with the start button drawn on it, kept as a reference only.
+  static const String splashArtwork = 'assets/images/Splash.png';
+  static const String onboardingArtwork = 'assets/images/OnboardingClean.png';
+
+  static const String mailIcon= 'assets/icons/mail.svg';
   static const String lockIcon = 'assets/icons/lock.svg';
   static const String eyeIcon = 'assets/icons/eye.svg';
   static const String bellIcon = 'assets/icons/bell.svg';

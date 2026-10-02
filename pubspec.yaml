@@ -46,6 +46,7 @@ dependencies:
   firebase_storage: ^13.6.0
   record: ^7.1.1
   just_audio: ^0.10.6
+  shared_preferences: ^2.5.5
 dev_dependencies:
   flutter_test:
     sdk: flutter

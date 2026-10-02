@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/constants/app_constants.dart';
 import 'core/services/account_creation_service.dart';
@@ -29,6 +30,7 @@ import 'features/exams/data/repositories/firestore_submission_repository.dart';
 import 'features/exams/domain/repositories/recording_repository.dart';
 import 'features/exams/domain/repositories/submission_repository.dart';
 import 'features/notifications/data/repositories/firestore_notifications_repository.dart';
+import 'features/onboarding/data/onboarding_store.dart';
 import 'features/notifications/domain/repositories/notifications_repository.dart';
 import 'features/questions/data/repositories/firestore_questions_repository.dart';
 import 'features/questions/domain/repositories/questions_repository.dart';
@@ -42,11 +44,16 @@ import 'router/app_router.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  runApp(const QuranTajweedApp());
+  final onboardingStore = OnboardingStore(
+    await SharedPreferences.getInstance(),
+  );
+  runApp(QuranTajweedApp(onboardingStore: onboardingStore));
 }
 
 class QuranTajweedApp extends StatefulWidget {
-  const QuranTajweedApp({super.key});
+  const QuranTajweedApp({super.key, required this.onboardingStore});
+
+  final OnboardingStore onboardingStore;
 
   @override
   State<QuranTajweedApp> createState() => _QuranTajweedAppState();
@@ -64,7 +71,7 @@ class _QuranTajweedAppState extends State<QuranTajweedApp> {
     super.initState();
     _authRepository = FirebaseAuthRepository(authService: AuthService());
     _authCubit = AuthCubit(_authRepository)..restoreSession();
-    _router = AppRouter.create(_authCubit);
+    _router = AppRouter.create(_authCubit, widget.onboardingStore);
   }
 
   @override

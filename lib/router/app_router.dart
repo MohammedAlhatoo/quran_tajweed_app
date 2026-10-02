@@ -21,6 +21,8 @@ import '../features/auth/presentation/pages/register_page.dart';
 import '../features/auth/presentation/state/auth_cubit.dart';
 import '../features/auth/presentation/state/auth_state.dart';
 import '../features/auth/presentation/state/mosques_cubit.dart';
+import '../features/onboarding/data/onboarding_store.dart';
+import '../features/onboarding/presentation/pages/onboarding_page.dart';
 import '../features/region/presentation/pages/region_home_page.dart';
 import '../features/splash/presentation/pages/splash_page.dart';
 import '../features/certificates/domain/repositories/certificates_repository.dart';
@@ -71,18 +73,43 @@ import '../features/supervisor/presentation/state/reviewed_exams_cubit.dart';
 import 'route_names.dart';
 
 abstract final class AppRouter {
+  /// The shortest time the splash screen stays on screen.
+  static const Duration splashMinimum = Duration(seconds: 3);
+
   /// Builds the router. It re-runs [redirectFor] whenever the authentication
   /// state changes.
-  static GoRouter create(AuthCubit authCubit) {
+  static GoRouter create(AuthCubit authCubit, OnboardingStore onboardingStore) {
+    final splashHold = _SplashHold(splashMinimum);
+
     return GoRouter(
       initialLocation: RouteNames.splash,
-      refreshListenable: _StreamListenable(authCubit.stream),
-      redirect: (context, state) =>
-          redirectFor(authCubit.state, state.matchedLocation),
+      refreshListenable: Listenable.merge([
+        _StreamListenable(authCubit.stream),
+        splashHold,
+      ]),
+      redirect: (context, state) {
+        final location = state.matchedLocation;
+        // The session is often checked faster than the splash can be seen.
+        if (location == RouteNames.splash && !splashHold.isOver) return null;
+        return redirectFor(
+          authCubit.state,
+          location,
+          onboardingSeen: onboardingStore.isSeen,
+        );
+      },
       routes: [
         GoRoute(
           path: RouteNames.splash,
           builder: (context, state) => const SplashPage(),
+        ),
+        GoRoute(
+          path: RouteNames.onboarding,
+          builder: (context, state) => OnboardingPage(
+            onStart: () {
+              onboardingStore.markSeen();
+              context.go(RouteNames.login);
+            },
+          ),
         ),
         GoRoute(
           path: RouteNames.login,
@@ -541,7 +568,11 @@ abstract final class AppRouter {
   }
 
   /// Where to send the user instead of [location], or null to stay.
-  static String? redirectFor(AuthState authState, String location) {
+  static String? redirectFor(
+    AuthState authState,
+    String location, {
+    bool onboardingSeen = false,
+  }) {
     switch (authState) {
       case AuthInitial():
         return location == RouteNames.splash ? null : RouteNames.splash;
@@ -553,11 +584,30 @@ abstract final class AppRouter {
         final insideOwnArea = location == home || location.startsWith('$home/');
         return insideOwnArea ? null : home;
       case AuthUnauthenticated() || AuthError() || AuthPasswordResetSent():
-        final isAuthPage =
-            location == RouteNames.login || location == RouteNames.register;
-        return isAuthPage ? null : RouteNames.login;
+        // A signed-out launch opens the onboarding first, but only until it
+        // has been seen once.
+        if (location == RouteNames.splash) {
+          return onboardingSeen ? RouteNames.login : RouteNames.onboarding;
+        }
+        final isPublicPage =
+            location == RouteNames.onboarding ||
+            location == RouteNames.login ||
+            location == RouteNames.register;
+        return isPublicPage ? null : RouteNames.login;
     }
   }
+}
+
+/// Notifies the router once the splash screen has been shown long enough.
+class _SplashHold extends ChangeNotifier {
+  _SplashHold(Duration duration) {
+    Timer(duration, () {
+      isOver = true;
+      notifyListeners();
+    });
+  }
+
+  bool isOver = false;
 }
 
 /// Notifies the router on every event of [stream].
