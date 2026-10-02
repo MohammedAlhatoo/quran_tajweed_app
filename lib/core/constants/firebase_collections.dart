@@ -1,5 +1,8 @@
 abstract final class FirebaseCollections {
   static const String users = 'users';
+  static const String staffInvites = 'staff_invites';
+  static const String regions = 'regions';
+  static const String squares = 'squares';
   static const String mosques = 'mosques';
   static const String courses = 'courses';
   static const String courseRules = 'course_rules';
@@ -11,4 +14,6 @@ abstract final class FirebaseCollections {
   static const String submissions = 'submissions';
   static const String questionAnswers = 'question_answers';
   static const String evaluations = 'evaluations';
+  static const String certificates = 'certificates';
+  static const String notifications = 'notifications';
 }

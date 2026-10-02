@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../../core/constants/firebase_collections.dart';
 import '../../../../core/utils/app_failure.dart';
+import '../../../notifications/data/repositories/firestore_notifications_repository.dart';
 import '../../domain/entities/exam_status.dart';
 import '../../domain/entities/submission_answer.dart';
 import '../../domain/repositories/recording_repository.dart';
@@ -17,6 +18,7 @@ class FirestoreSubmissionRepository implements SubmissionRepository {
   Future<void> submitExam({
     required String examId,
     required String studentId,
+    required String studentName,
     required List<SubmissionAnswer> answers,
   }) async {
     // The submission shares the examination's ID, so an examination can be
@@ -43,6 +45,20 @@ class FirestoreSubmissionRepository implements SubmissionRepository {
         'updatedAt': FieldValue.serverTimestamp(),
       });
     try {
+      // The notification goes to the square the examination was started in,
+      // which is the square whose supervisor reviews it.
+      final squareId = (await exam.get()).data()?['squareId'];
+      if (squareId is String && squareId.isNotEmpty) {
+        final (id, data) = FirestoreNotificationsRepository.examSubmitted(
+          examId: examId,
+          squareId: squareId,
+          studentName: studentName,
+        );
+        batch.set(
+          _firestore.collection(FirebaseCollections.notifications).doc(id),
+          data,
+        );
+      }
       await batch.commit();
     } on FirebaseException catch (e) {
       throw AppFailure.fromFirebase(e);

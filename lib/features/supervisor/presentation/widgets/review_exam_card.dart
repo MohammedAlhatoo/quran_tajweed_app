@@ -4,19 +4,24 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../core/constants/app_assets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/status_chip.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../courses/domain/entities/course.dart';
+import '../../../exams/domain/entities/evaluation.dart';
 import '../../../exams/domain/entities/exam.dart';
+import '../../../exams/domain/entities/exam_status.dart';
 import '../../../student/presentation/widgets/user_avatar.dart';
 
-/// A submitted examination on the supervisor's list.
-class PendingExamCard extends StatelessWidget {
-  const PendingExamCard({
+/// A submitted examination on the supervisor's lists: one that needs review,
+/// or one whose result is approved.
+class ReviewExamCard extends StatelessWidget {
+  const ReviewExamCard({
     super.key,
     required this.exam,
     required this.student,
     required this.course,
     required this.onTap,
+    this.evaluation,
   });
 
   final Exam exam;
@@ -26,6 +31,9 @@ class PendingExamCard extends StatelessWidget {
 
   /// Null when the course is no longer available.
   final Course? course;
+
+  /// The approved result, for a reviewed examination.
+  final Evaluation? evaluation;
 
   final VoidCallback onTap;
 
@@ -38,6 +46,8 @@ class PendingExamCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(16);
     final submittedAt = exam.submittedAt;
+    final evaluation = this.evaluation;
+    final reviewed = exam.status == ExamStatus.approved;
     final details = [
       course?.name ?? 'دورة غير متاحة',
       if (submittedAt != null) _formatDate(submittedAt),
@@ -93,6 +103,30 @@ class PendingExamCard extends StatelessWidget {
                           color: AppColors.textHint,
                           lineHeight: 16.5,
                         ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          reviewed
+                              ? const StatusChip(
+                                  'تمت المراجعة',
+                                  tone: StatusTone.success,
+                                )
+                              : const StatusChip(
+                                  'جديد — يحتاج مراجعة',
+                                  tone: StatusTone.info,
+                                ),
+                          if (evaluation != null)
+                            StatusChip(
+                              '${evaluation.passed ? 'ناجح' : 'راسب'} · '
+                              '${evaluation.finalScore} من 100',
+                              tone: evaluation.passed
+                                  ? StatusTone.neutral
+                                  : StatusTone.danger,
+                            ),
+                        ],
                       ),
                     ],
                   ),

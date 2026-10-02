@@ -42,6 +42,17 @@ const _exam = Exam(
   regionId: 'region-1',
 );
 
+const _approvedExam = Exam(
+  id: 'exam-2',
+  studentId: 'uid-1',
+  courseId: 'course-1',
+  segmentId: 'segment-1',
+  status: ExamStatus.approved,
+  mosqueId: 'mosque-1',
+  squareId: 'square-1',
+  regionId: 'region-1',
+);
+
 const _segment = ExamSegment(
   id: 'segment-1',
   surah: 2,
@@ -136,7 +147,14 @@ class _FakeReviewRepository implements ReviewRepository {
   Map<String, String> correctAnswers = {
     for (var order = 1; order <= 10; order++) 'q$order': order <= 7 ? 'ب' : 'أ',
   };
-  ({String supervisorId, int recitationScore, int theoryScore})? approved;
+  ({
+    String examId,
+    String courseName,
+    String supervisorId,
+    int recitationScore,
+    int theoryScore,
+  })?
+  approved;
   String? requestedSquareId;
   AppUser? student = _student;
   Submission? submission = _submission;
@@ -155,7 +173,10 @@ class _FakeReviewRepository implements ReviewRepository {
   }
 
   @override
-  Future<Submission?> fetchSubmission(String examId) async => submission;
+  Future<Submission?> fetchSubmission(String examId) async {
+    if (failure case final failure?) throw failure;
+    return submission;
+  }
 
   @override
   Future<List<ExamQuestion>> fetchExamQuestions(String examId) async =>
@@ -164,20 +185,26 @@ class _FakeReviewRepository implements ReviewRepository {
   @override
   Future<Map<String, String>> fetchCorrectAnswers(
     List<String> questionIds,
-  ) async => {
-    for (final id in questionIds)
-      id: ?correctAnswers[id],
-  };
+  ) async => {for (final id in questionIds) id: ?correctAnswers[id]};
+
+  @override
+  Future<List<Exam>> fetchReviewedExams(String squareId) async {
+    if (failure case final failure?) throw failure;
+    return [_approvedExam];
+  }
 
   @override
   Future<void> approveExam({
-    required String examId,
+    required Exam exam,
+    required String courseName,
     required String supervisorId,
     required int recitationScore,
     required int theoryScore,
   }) async {
     if (failure case final failure?) throw failure;
     approved = (
+      examId: exam.id,
+      courseName: courseName,
       supervisorId: supervisorId,
       recitationScore: recitationScore,
       theoryScore: theoryScore,
@@ -300,7 +327,7 @@ void main() {
       await cubit.load();
 
       final state = cubit.state as ExamReviewLoaded;
-      expect(state.student.uid, 'uid-1');
+      expect(state.student!.uid, 'uid-1');
       expect(state.course!.name, 'تمهيدية');
       expect(state.segment.id, 'segment-1');
       expect(state.submission.recordingPath, isNotEmpty);
@@ -328,17 +355,25 @@ void main() {
       expect(cubit.state, isA<ExamReviewError>());
 
       exams.exam = _exam;
-      reviews.student = null;
+      reviews.submission = null;
       cubit = build();
       await cubit.load();
       expect(cubit.state, isA<ExamReviewError>());
+    });
 
-      reviews
-        ..student = _student
-        ..submission = null;
-      cubit = build();
+    test('stays reviewable when the student can no longer be read', () async {
+      // The student's mosque moved to another square after the examination.
+      reviews.studentFailure = const AppFailure(
+        'لا تملك صلاحية عرض هذه البيانات.',
+      );
+      final cubit = build();
+
       await cubit.load();
-      expect(cubit.state, isA<ExamReviewError>());
+
+      final state = cubit.state as ExamReviewLoaded;
+      expect(state.student, isNull);
+      expect(state.exam.id, 'exam-1');
+      expect(state.theoryScore, 14);
     });
 
     test('load emits the failure message', () async {
@@ -392,7 +427,6 @@ void main() {
     setUp(() {
       cubit = EvaluationCubit(
         repository: reviews,
-        examId: 'exam-1',
         supervisorId: 'supervisor-1',
       );
     });
@@ -410,10 +444,12 @@ void main() {
     test('approve saves the two scores under the supervisor', () async {
       cubit.setRecitationScore('60');
 
-      await cubit.approve(theoryScore: 14);
+      await cubit.approve(exam: _exam, courseName: 'تمهيدية', theoryScore: 14);
 
       expect(cubit.state.status, EvaluationStatus.approved);
       expect(reviews.approved, (
+        examId: 'exam-1',
+        courseName: 'تمهيدية',
         supervisorId: 'supervisor-1',
         recitationScore: 60,
         theoryScore: 14,
@@ -421,7 +457,7 @@ void main() {
     });
 
     test('approve does nothing without a valid recitation score', () async {
-      await cubit.approve(theoryScore: 14);
+      await cubit.approve(exam: _exam, courseName: 'تمهيدية', theoryScore: 14);
 
       expect(cubit.state.status, EvaluationStatus.editing);
       expect(reviews.approved, isNull);
@@ -431,17 +467,17 @@ void main() {
       cubit.setRecitationScore('60');
       reviews.failure = const AppFailure('تعذّر الاتصال.');
 
-      await cubit.approve(theoryScore: 14);
+      await cubit.approve(exam: _exam, courseName: 'تمهيدية', theoryScore: 14);
       expect(cubit.state.status, EvaluationStatus.editing);
       expect(cubit.state.recitationScore, 60);
       expect(cubit.state.errorMessage, 'تعذّر الاتصال.');
 
       reviews.failure = null;
-      await cubit.approve(theoryScore: 14);
+      await cubit.approve(exam: _exam, courseName: 'تمهيدية', theoryScore: 14);
       expect(cubit.state.status, EvaluationStatus.approved);
 
       reviews.approved = null;
-      await cubit.approve(theoryScore: 14);
+      await cubit.approve(exam: _exam, courseName: 'تمهيدية', theoryScore: 14);
       cubit.setRecitationScore('10');
       expect(reviews.approved, isNull);
       expect(cubit.state.recitationScore, 60);

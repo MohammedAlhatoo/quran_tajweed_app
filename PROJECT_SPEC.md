@@ -21,7 +21,9 @@ The following decisions are approved and take priority over any other wording in
    * Students can self-register.
    * Students do not choose their role.
    * The first General Admin account is created manually during system setup.
-   * The General Admin creates Region Officer and Square Supervisor accounts from inside the admin panel.
+   * The General Admin creates Region Officer accounts and links each one to a region.
+   * Square Supervisor accounts are created and linked to a square by the Region Officer of the region, or by the General Admin.
+   * A new administrative account has no temporary password: its owner sets the password through a password reset link sent to the account's email. No password is stored in Firestore.
    * There is no self-registration for supervisors, region officers, or admins.
    * No registration screen allows a user to choose a role.
 4. **Roles:** The system is a single multi-role Flutter application, not separate applications. Approved roles: `student`, `square_supervisor`, `region_officer`, `general_admin`. After login, the user is routed according to role and permissions.
@@ -150,14 +152,13 @@ The Region Officer manages a specific region.
 
 Responsibilities include:
 
-* Viewing squares inside the region.
-* Managing the existing supervisors inside the region according to the permissions granted to the Region Officer.
-* Viewing mosques.
-* Viewing students.
-* Viewing examination statistics.
-* Monitoring examination activity.
+* Creating and managing the squares inside the region.
+* Adding mosques to the squares of the region, and moving a mosque from one square of the region to another.
+* Creating Square Supervisor accounts and linking each one to a square of the region.
+* Viewing the students of the region, and suspending or reactivating their accounts.
+* Viewing the examinations and reports of the region.
 
-The Region Officer does not create new supervisor accounts. Region Officer and Square Supervisor accounts are created by the General Admin.
+Region Officer accounts are created by the General Admin. A Region Officer cannot create a Region Officer or a General Admin, cannot change their own account, and cannot move a mosque or a supervisor out of the region.
 
 The Region Officer must not access unrelated regions.
 
@@ -607,7 +608,8 @@ Account creation rules:
 * The student can sign in after registration. The permission to start an examination depends on the student's mosque, square, and region affiliation data being complete.
 * The Square Supervisor does not need to manually assign the student to a mosque after registration.
 * The first General Admin account is created manually during system setup.
-* The General Admin creates Region Officer and Square Supervisor accounts from inside the admin panel.
+* The General Admin creates Region Officer accounts. Square Supervisor accounts are created by the Region Officer of the region or by the General Admin.
+* The owner of a new administrative account sets the password through a password reset link. No temporary password is created for them or stored.
 * There is no self-registration for supervisors, region officers, or admins.
 * No registration screen allows a user to choose a role.
 
@@ -1027,6 +1029,7 @@ Example:
 notifications/{notificationId}
 
 userId
+squareId
 title
 body
 type
@@ -1034,6 +1037,8 @@ relatedId
 isRead
 createdAt
 ```
+
+A notification is addressed either to one account (`userId`, with `squareId = null`) or to the supervisor of a square (`squareId`, with `userId = null`). `relatedId` is the ID of the examination. Notifications are shown inside the application; there are no push notifications in Phase 1.
 
 ---
 
@@ -1583,7 +1588,7 @@ Phase 1 decisions approved (see "Approved Phase 1 Decisions").
 Phase 2 and Phase 3 are Future Work only.
 Project analysis completed (Implementation Order step 1).
 Architecture confirmed (Implementation Order step 2).
-Implementation Order steps 3-13 implemented.
+Implementation Order steps 3-14 implemented.
 AI is not part of Phase 1.
 Figma MCP is connected to Claude Code.
 ```
@@ -1598,4 +1603,14 @@ Submission (step 12): the student reviews the recording status and the ten answe
 
 Supervisor Review (step 13): the supervisor's home lists the examinations of the square that await review, oldest submission first. Opening one shows the student, the course, the segment reference, the recitation (downloaded from Storage, then played) and the ten answers, each marked against its correct answer. The supervisor enters the recitation score out of 80; the theory score out of 20 is calculated from the student's answers and `question_answers` (two marks per question), and the final score out of 100 and the result (pass mark 70) are shown. Approving the result writes one batch: it creates `evaluations/{examId}` with `status = approved` and moves the examination to `approved` with `reviewedAt` and `approvedAt`. Differences from section 33, by decision: the `evaluations` record is created when the supervisor approves, not when the student submits, so no `pending` evaluation exists; `feedback` is stored as null because no feedback field is shown yet. No examination is moved to `under_review`. Interim limit: the theory score is calculated on the supervisor's device, so an active supervisor can read `question_answers` one document at a time, and the security rules check the range and the arithmetic of the scores but not that `theoryScore` matches the answers. The supervisor screens were built in the style of the existing screens, without inspecting Figma, because the Figma MCP call limit was reached; they must be compared with the approved frames later. Not built: Supervisor Dashboard statistics, Student History, the student's result screen. The updated `firestore.rules` and `storage.rules` are not deployed yet, and the module has not been tested against Firebase or on a device.
 
-The next step is Implementation Order step 14: Notifications, Certificates, Region Officer Module, General Admin Module, Reports, Account and Role Management.
+Step 14 (notifications, certificates, administration, reports): everything is done from the application, without Cloud Functions, so every write is checked by the security rules only.
+
+* Notifications: in-app only. The student's submission batch (step 12) also writes `notifications/{examId}_submitted`, addressed to the square the examination was started in. The supervisor's approval batch (step 13) also writes `notifications/{examId}_result`, addressed to the student, stating the course, the final score and passed or failed. The scoring of step 13 is unchanged. The supervisor's counter of pending examinations is taken from the examinations themselves. An examination awaiting review is shown as "جديد — يحتاج مراجعة" and an approved one as "تمت المراجعة"; `under_review` is still not used. Approved examinations leave the pending list and appear under "تمت المراجعة" and in the reports.
+* Certificates: `certificates/{examId}` is created in the approval batch only when the result is `passed`, with the fields of section 34 and `fileUrl = null`. The rules allow it only to the supervisor of the examination's square, in the batch that approves the result, and never allow changing or deleting it. The student sees the result of an approved examination and, when passed, the certificate, inside the application. No certificate file is generated.
+* Administration: the General Admin manages regions, region officers, squares, mosques, supervisors and students. A Region Officer manages the squares, mosques, supervisors and students of the region only. Both use the same screens and data layer (`features/admin`), limited by scope. Accounts are created on a second Firebase app so the administrator stays signed in: the Firebase Authentication account is created first with a random password that is discarded and never stored; the administrator then writes `staff_invites/{uid}` with the role and the scope; the new account itself creates `users/{uid}` under the same UID, and the rules accept it only when it repeats the invitation; the owner sets a password from the emailed reset link. No rule lets anyone write an administrative `users` document for another UID. Moving a mosque is one batch that updates the mosque and the `squareId` and `regionId` of all its students together, or nothing; a mosque with more than 450 students to update is refused. Examinations are not part of the batch: they keep the scope they were started in, and stay reviewable and reported under it. `squares.supervisorId` and `regions.officerId` are kept up to date; `squares.mosqueIds` and `mosques.supervisorId` are not written.
+* Reports: the supervisor sees the square, the Region Officer the region and its squares, the General Admin the whole system and its regions. A report holds the students, the examinations by status, passed and failed, the pass rate and the average score, by course and by unit.
+* First General Admin: created manually. Create the account in Firebase Authentication, then create `users/{uid}` in the Firebase console with all eleven fields: `uid`, `name`, `email`, `phone`, `role = general_admin`, `regionId = null`, `squareId = null`, `mosqueId = null`, `isActive = true`, `createdAt`, `updatedAt`. No rule lets the application create or change a General Admin.
+
+Known limits of step 14: an account can be suspended (`isActive = false`) but not deleted; one supervisor per square and one officer per region are enforced by the screens, not by the rules; recording a new account on its region or square (`officerId`, `supervisorId`) is a separate write after the account is complete, and a failure there is reported so the account can be linked again; a student who registers in a mosque at the very moment it moves keeps the old square until the move is repeated; the single-batch mosque move relies on the rules reading the same documents for every student, and has not been tried against Firebase with a large mosque; reports read every examination of the scope and one evaluation per approved examination, which suits Phase 1 sizes only; managing courses, Tajweed rules and the question bank (section 48) is not built; the screens were built in the style of the existing ones because the Figma MCP call limit was still reached. The updated `firestore.rules` and `storage.rules` are not deployed, and step 14 has not been tested against Firebase or on a device.
+
+The next step is Implementation Order step 15: Security Rules.

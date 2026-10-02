@@ -15,3 +15,9 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+## First General Admin
+
+The first General Admin is created manually during system setup; the
+application never creates one. See "First General Admin" under
+"Current Development State" in `PROJECT_SPEC.md`.

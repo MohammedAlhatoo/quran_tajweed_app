@@ -1,10 +1,19 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/widgets/role_shell.dart';
+import '../core/widgets/state_views.dart';
+import '../features/admin/domain/entities/exam_report.dart';
+import '../features/admin/domain/entities/organization.dart';
+import '../features/admin/domain/repositories/organization_repository.dart';
+import '../features/admin/domain/repositories/reports_repository.dart';
 import '../features/admin/presentation/pages/admin_home_page.dart';
+import '../features/admin/presentation/state/organization_cubit.dart';
+import '../features/admin/presentation/state/report_cubit.dart';
+import '../features/auth/domain/entities/app_user.dart';
 import '../features/auth/domain/entities/user_role.dart';
 import '../features/auth/domain/repositories/auth_repository.dart';
 import '../features/auth/presentation/pages/login_page.dart';
@@ -14,15 +23,26 @@ import '../features/auth/presentation/state/auth_state.dart';
 import '../features/auth/presentation/state/mosques_cubit.dart';
 import '../features/region/presentation/pages/region_home_page.dart';
 import '../features/splash/presentation/pages/splash_page.dart';
+import '../features/certificates/domain/repositories/certificates_repository.dart';
+import '../features/certificates/presentation/pages/certificate_page.dart';
+import '../features/certificates/presentation/pages/certificates_page.dart';
+import '../features/certificates/presentation/state/certificates_cubit.dart';
 import '../features/courses/domain/repositories/courses_repository.dart';
 import '../features/courses/presentation/pages/course_details_page.dart';
 import '../features/courses/presentation/pages/courses_page.dart';
 import '../features/courses/presentation/state/course_details_cubit.dart';
 import '../features/courses/presentation/state/courses_cubit.dart';
 import '../features/exams/data/services/device_recitation_audio.dart';
+import '../features/exams/domain/repositories/evaluations_repository.dart';
 import '../features/exams/domain/repositories/exams_repository.dart';
 import '../features/exams/domain/repositories/recording_repository.dart';
 import '../features/exams/presentation/pages/exam_history_page.dart';
+import '../features/exams/presentation/pages/exam_result_page.dart';
+import '../features/exams/presentation/state/exam_result_cubit.dart';
+import '../features/notifications/domain/entities/app_notification.dart';
+import '../features/notifications/domain/repositories/notifications_repository.dart';
+import '../features/notifications/presentation/pages/notifications_page.dart';
+import '../features/notifications/presentation/state/notifications_cubit.dart';
 import '../features/exams/domain/repositories/submission_repository.dart';
 import '../features/exams/presentation/pages/exam_segment_page.dart';
 import '../features/exams/presentation/pages/submission_review_page.dart';
@@ -47,6 +67,7 @@ import '../features/supervisor/presentation/state/evaluation_cubit.dart';
 import '../features/supervisor/presentation/state/exam_review_cubit.dart';
 import '../features/supervisor/presentation/state/pending_exams_cubit.dart';
 import '../features/supervisor/presentation/state/recitation_playback_cubit.dart';
+import '../features/supervisor/presentation/state/reviewed_exams_cubit.dart';
 import 'route_names.dart';
 
 abstract final class AppRouter {
@@ -79,14 +100,94 @@ abstract final class AppRouter {
         ..._supervisorRoutes(authCubit),
         GoRoute(
           path: RouteNames.region,
-          builder: (context, state) => const RegionHomePage(),
+          builder: (context, state) {
+            final regionId = _user(authCubit)?.regionId;
+            // An officer who is not linked to a region manages nothing.
+            if (regionId == null || regionId.isEmpty) {
+              return const RoleShell(
+                tabs: [
+                  RoleTab(
+                    label: 'المنطقة',
+                    icon: Icons.map_outlined,
+                    title: 'مسؤول المنطقة',
+                    body: AppMessageView(
+                      message: 'حسابك غير مرتبط بمنطقة. تواصل مع الإدارة.',
+                    ),
+                  ),
+                ],
+              );
+            }
+            return MultiBlocProvider(
+              providers: [
+                BlocProvider(
+                  create: (context) => OrganizationCubit(
+                    context.read<OrganizationRepository>(),
+                    AdminScope.region(regionId),
+                  )..load(),
+                ),
+                BlocProvider(
+                  create: (context) => ReportCubit(
+                    context.read<ReportsRepository>(),
+                    ReportScope.region(regionId),
+                  ),
+                ),
+              ],
+              child: const RegionHomePage(),
+            );
+          },
         ),
         GoRoute(
           path: RouteNames.admin,
-          builder: (context, state) => const AdminHomePage(),
+          builder: (context, state) => MultiBlocProvider(
+            providers: [
+              BlocProvider(
+                create: (context) => OrganizationCubit(
+                  context.read<OrganizationRepository>(),
+                  const AdminScope.system(),
+                )..load(),
+              ),
+              BlocProvider(
+                create: (context) => ReportCubit(
+                  context.read<ReportsRepository>(),
+                  const ReportScope.system(),
+                ),
+              ),
+            ],
+            child: const AdminHomePage(),
+          ),
         ),
       ],
     );
+  }
+
+  /// The signed-in account, or null when nobody is signed in.
+  static AppUser? _user(AuthCubit authCubit) {
+    final state = authCubit.state;
+    return state is AuthAuthenticated ? state.user : null;
+  }
+
+  static NotificationsCubit _studentNotifications(
+    BuildContext context,
+    AuthCubit authCubit,
+  ) {
+    final uid = _user(authCubit)?.uid;
+    return NotificationsCubit(
+      context.read<NotificationsRepository>(),
+      uid == null ? null : NotificationAudience.user(uid),
+    )..start();
+  }
+
+  static ExamResultCubit _examResult(
+    BuildContext context,
+    GoRouterState state,
+  ) {
+    return ExamResultCubit(
+      exams: context.read<ExamsRepository>(),
+      evaluations: context.read<EvaluationsRepository>(),
+      certificates: context.read<CertificatesRepository>(),
+      courses: context.read<CoursesRepository>(),
+      examId: state.pathParameters['examId']!,
+    )..load();
   }
 
   /// The student's area: four tabs inside the shell, and full-screen pages
@@ -112,6 +213,10 @@ abstract final class AppRouter {
                   authState is AuthAuthenticated ? authState.user.uid : '',
                 )..load();
               },
+            ),
+            // Feeds the unread counter on the home tab.
+            BlocProvider(
+              create: (context) => _studentNotifications(context, authCubit),
             ),
           ],
           child: StudentShell(navigationShell: navigationShell),
@@ -231,6 +336,9 @@ abstract final class AppRouter {
                   studentId: authState is AuthAuthenticated
                       ? authState.user.uid
                       : '',
+                  studentName: authState is AuthAuthenticated
+                      ? authState.user.name
+                      : '',
                 )..load(),
               ),
             ],
@@ -244,6 +352,50 @@ abstract final class AppRouter {
             ),
           );
         },
+      ),
+      GoRoute(
+        path: RouteNames.studentExamResultPattern,
+        builder: (context, state) => BlocProvider(
+          create: (context) => _examResult(context, state),
+          child: const ExamResultPage(),
+        ),
+      ),
+      GoRoute(
+        path: RouteNames.studentExamCertificatePattern,
+        builder: (context, state) => BlocProvider(
+          create: (context) => _examResult(context, state),
+          child: const CertificatePage(),
+        ),
+      ),
+      GoRoute(
+        path: RouteNames.studentNotifications,
+        builder: (context, state) => BlocProvider(
+          create: (context) => _studentNotifications(context, authCubit),
+          child: NotificationsPage(
+            // Every student notification is about an examination's result.
+            onOpen: (notification) => context.push(
+              RouteNames.studentExamResult(notification.relatedId),
+            ),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: RouteNames.studentCertificates,
+        builder: (context, state) => MultiBlocProvider(
+          providers: [
+            BlocProvider(
+              create: (context) =>
+                  CoursesCubit(context.read<CoursesRepository>())..load(),
+            ),
+            BlocProvider(
+              create: (context) => CertificatesCubit(
+                context.read<CertificatesRepository>(),
+                _user(authCubit)?.uid ?? '',
+              )..load(),
+            ),
+          ],
+          child: const CertificatesPage(),
+        ),
       ),
       GoRoute(
         path: RouteNames.studentPersonalInfo,
@@ -287,6 +439,36 @@ abstract final class AppRouter {
                 )..load();
               },
             ),
+            BlocProvider(
+              create: (context) => ReviewedExamsCubit(
+                reviews: context.read<ReviewRepository>(),
+                evaluations: context.read<EvaluationsRepository>(),
+                squareId: _user(authCubit)?.squareId,
+              )..load(),
+            ),
+            // Loaded when its tab is opened.
+            BlocProvider(
+              create: (context) {
+                final squareId = _user(authCubit)?.squareId;
+                return ReportCubit(
+                  context.read<ReportsRepository>(),
+                  squareId == null || squareId.isEmpty
+                      ? null
+                      : ReportScope.square(squareId),
+                );
+              },
+            ),
+            BlocProvider(
+              create: (context) {
+                final squareId = _user(authCubit)?.squareId;
+                return NotificationsCubit(
+                  context.read<NotificationsRepository>(),
+                  squareId == null || squareId.isEmpty
+                      ? null
+                      : NotificationAudience.square(squareId),
+                )..start();
+              },
+            ),
           ],
           child: const SupervisorHomePage(),
         ),
@@ -316,7 +498,6 @@ abstract final class AppRouter {
               BlocProvider(
                 create: (context) => EvaluationCubit(
                   repository: context.read<ReviewRepository>(),
-                  examId: examId,
                   supervisorId: authState is AuthAuthenticated
                       ? authState.user.uid
                       : '',

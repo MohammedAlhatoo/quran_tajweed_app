@@ -7,11 +7,8 @@ class AppFailure implements Exception {
   /// Maps a Firestore or Storage error to a user-facing failure.
   factory AppFailure.fromFirebase(FirebaseException e) {
     return switch (e.code) {
-      'unavailable' ||
-      'deadline-exceeded' ||
-      'retry-limit-exceeded' => const AppFailure(
-        'تعذّر الاتصال. تحقق من الإنترنت وحاول مرة أخرى.',
-      ),
+      'unavailable' || 'deadline-exceeded' || 'retry-limit-exceeded' =>
+        const AppFailure('تعذّر الاتصال. تحقق من الإنترنت وحاول مرة أخرى.'),
       'unauthorized' => const AppFailure('لا تملك صلاحية تنفيذ هذا الإجراء.'),
       'permission-denied' => const AppFailure(
         'لا تملك صلاحية عرض هذه البيانات.',

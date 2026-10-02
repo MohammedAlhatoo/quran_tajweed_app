@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_assets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/utils/helpers.dart';
 import '../../../../router/route_names.dart';
 import '../../../auth/presentation/state/auth_cubit.dart';
 import '../../../auth/presentation/state/auth_state.dart';
@@ -80,8 +79,7 @@ class ProfilePage extends StatelessWidget {
           _MenuItem(
             icon: AppAssets.profileCertificatesIcon,
             label: 'الشهادات',
-            // Certificates are implemented in their own step.
-            onTap: () => showAppSnackBar(context, 'الشهادات ستتوفر قريبًا.'),
+            onTap: () => context.push(RouteNames.studentCertificates),
           ),
           const SizedBox(height: 32),
           _SignOutButton(

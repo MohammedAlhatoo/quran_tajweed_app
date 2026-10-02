@@ -7,6 +7,7 @@ import '../../../../core/widgets/state_views.dart';
 import '../../../../router/route_names.dart';
 import '../../../courses/domain/entities/course.dart';
 import '../../../courses/presentation/state/courses_cubit.dart';
+import '../../domain/entities/exam_status.dart';
 import '../state/exam_history_cubit.dart';
 import '../widgets/exam_history_card.dart';
 
@@ -54,10 +55,14 @@ class ExamHistoryPage extends StatelessWidget {
                   return ExamHistoryCard(
                     exam: exam,
                     course: coursesById[exam.courseId],
-                    // Only an open examination can be continued for now;
-                    // results are shown once evaluation is implemented.
+                    // An open examination is continued; an approved one shows
+                    // its result. One awaiting review has nothing to open.
                     onTap: exam.status.isOpen
                         ? () => context.push(RouteNames.studentExam(exam.id))
+                        : exam.status == ExamStatus.approved
+                        ? () => context.push(
+                            RouteNames.studentExamResult(exam.id),
+                          )
                         : null,
                   );
                 },

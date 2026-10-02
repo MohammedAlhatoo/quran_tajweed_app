@@ -11,6 +11,10 @@ abstract interface class ReviewRepository {
   /// oldest submission first.
   Future<List<Exam>> fetchPendingExams(String squareId);
 
+  /// The examinations of [squareId] whose result is approved, newest
+  /// approval first.
+  Future<List<Exam>> fetchReviewedExams(String squareId);
+
   /// Returns null when the student's account does not exist.
   Future<AppUser?> fetchStudent(String studentId);
 
@@ -24,11 +28,15 @@ abstract interface class ReviewRepository {
   /// A question without a stored answer is absent from the result.
   Future<Map<String, String>> fetchCorrectAnswers(List<String> questionIds);
 
-  /// Approves the result of [examId]: saves its evaluation and moves the
+  /// Approves the result of [exam]: saves its evaluation and moves the
   /// examination to `approved`, together. The final score and the result are
   /// derived from the two scores.
+  ///
+  /// The same write notifies the student of the result in [courseName], and
+  /// issues the certificate when the result is `passed`.
   Future<void> approveExam({
-    required String examId,
+    required Exam exam,
+    required String courseName,
     required String supervisorId,
     required int recitationScore,
     required int theoryScore,

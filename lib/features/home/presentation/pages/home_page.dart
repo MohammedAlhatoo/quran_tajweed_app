@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_assets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/utils/helpers.dart';
 import '../../../../core/widgets/state_views.dart';
 import '../../../../router/route_names.dart';
 import '../../../auth/presentation/state/auth_cubit.dart';
@@ -14,6 +13,7 @@ import '../../../auth/presentation/state/auth_state.dart';
 import '../../../courses/domain/entities/course.dart';
 import '../../../courses/presentation/state/courses_cubit.dart';
 import '../../../courses/presentation/widgets/course_level_style.dart';
+import '../../../notifications/presentation/state/notifications_cubit.dart';
 import '../../../student/presentation/widgets/user_avatar.dart';
 
 /// The student's home tab.
@@ -127,17 +127,32 @@ class _NotificationsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: const Color(0xFFF9FAFB),
-      shape: const CircleBorder(side: BorderSide(color: AppColors.line)),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        // Notifications are implemented in their own step.
-        onTap: () => showAppSnackBar(context, 'الإشعارات ستتوفر قريبًا.'),
-        child: SizedBox.square(
-          dimension: 36,
-          child: Center(
-            child: SvgPicture.asset(AppAssets.bellIcon, width: 20, height: 20),
+    final state = context.watch<NotificationsCubit>().state;
+    final unread = state is NotificationsLoaded ? state.unreadCount : 0;
+
+    return Semantics(
+      button: true,
+      label: 'الإشعارات',
+      child: Badge.count(
+        count: unread,
+        isLabelVisible: unread > 0,
+        backgroundColor: AppColors.danger,
+        child: Material(
+          color: const Color(0xFFF9FAFB),
+          shape: const CircleBorder(side: BorderSide(color: AppColors.line)),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () => context.push(RouteNames.studentNotifications),
+            child: SizedBox.square(
+              dimension: 36,
+              child: Center(
+                child: SvgPicture.asset(
+                  AppAssets.bellIcon,
+                  width: 20,
+                  height: 20,
+                ),
+              ),
+            ),
           ),
         ),
       ),

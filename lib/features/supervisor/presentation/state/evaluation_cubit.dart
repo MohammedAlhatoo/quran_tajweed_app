@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/utils/app_failure.dart';
+import '../../../exams/domain/entities/exam.dart';
 import '../../domain/repositories/review_repository.dart';
 import '../../domain/services/exam_scoring.dart';
 
@@ -26,14 +27,10 @@ class EvaluationState {
 /// The supervisor's evaluation of one examination: the recitation score and
 /// the approval of the result.
 class EvaluationCubit extends Cubit<EvaluationState> {
-  EvaluationCubit({
-    required this._repository,
-    required this._examId,
-    required this._supervisorId,
-  }) : super(const EvaluationState());
+  EvaluationCubit({required this._repository, required this._supervisorId})
+    : super(const EvaluationState());
 
   final ReviewRepository _repository;
-  final String _examId;
   final String _supervisorId;
 
   /// Takes the recitation score as typed. Anything but a whole number from
@@ -51,9 +48,14 @@ class EvaluationCubit extends Cubit<EvaluationState> {
     );
   }
 
-  /// Approves the result with the entered recitation score and
+  /// Approves the result of [exam] with the entered recitation score and
   /// [theoryScore], the score calculated from the student's answers.
-  Future<void> approve({required int theoryScore}) async {
+  /// [courseName] names the course in the student's notification.
+  Future<void> approve({
+    required Exam exam,
+    required String courseName,
+    required int theoryScore,
+  }) async {
     final recitationScore = state.recitationScore;
     if (state.status != EvaluationStatus.editing || recitationScore == null) {
       return;
@@ -66,7 +68,8 @@ class EvaluationCubit extends Cubit<EvaluationState> {
     );
     try {
       await _repository.approveExam(
-        examId: _examId,
+        exam: exam,
+        courseName: courseName,
         supervisorId: _supervisorId,
         recitationScore: recitationScore,
         theoryScore: theoryScore,

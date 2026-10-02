@@ -36,7 +36,10 @@ class ExamReviewLoaded extends ExamReviewState {
   /// Null when the course is no longer available.
   final Course? course;
   final ExamSegment segment;
-  final AppUser student;
+
+  /// Null when the student's account cannot be read, for example because the
+  /// student's mosque has moved to another square since the examination.
+  final AppUser? student;
   final Submission submission;
   final List<ExamQuestion> questions;
 
@@ -100,11 +103,7 @@ class ExamReviewCubit extends Cubit<ExamReviewState> {
         emit(const ExamReviewError('مقطع هذا الاختبار غير متاح.'));
         return;
       }
-      final student = await _reviews.fetchStudent(exam.studentId);
-      if (student == null) {
-        emit(const ExamReviewError('بيانات الطالب غير متاحة.'));
-        return;
-      }
+      final student = await _fetchStudent(exam.studentId);
       final submission = await _reviews.fetchSubmission(_examId);
       if (submission == null) {
         emit(const ExamReviewError('لم يُرسل هذا الاختبار بعد.'));
@@ -126,6 +125,17 @@ class ExamReviewCubit extends Cubit<ExamReviewState> {
       );
     } on AppFailure catch (failure) {
       emit(ExamReviewError(failure.message));
+    }
+  }
+
+  /// The examination stays reviewable by the supervisor of the square it was
+  /// started in, even when the student's account is no longer in that square
+  /// and so can no longer be read.
+  Future<AppUser?> _fetchStudent(String studentId) async {
+    try {
+      return await _reviews.fetchStudent(studentId);
+    } on AppFailure {
+      return null;
     }
   }
 }

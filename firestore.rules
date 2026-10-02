@@ -9,6 +9,75 @@ service cloud.firestore {
       return signedIn() && request.auth.token.admin == true;
     }
 
+    function ownUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // The role and the scope of an account come from its users document. Only
+    // an active account holds a role.
+    function hasRole(role) {
+      return signedIn()
+        && ownUser().role == role
+        && ownUser().isActive == true;
+    }
+
+    // The General Admin manages the whole system.
+    function isGeneralAdmin() {
+      return hasRole('general_admin');
+    }
+
+    // An active region officer of [regionId].
+    function isOfficerOf(regionId) {
+      return hasRole('region_officer')
+        && ownUser().regionId is string
+        && ownUser().regionId == regionId;
+    }
+
+    // The General Admin, or the officer of [regionId].
+    function managesRegion(regionId) {
+      return isGeneralAdmin() || isOfficerOf(regionId);
+    }
+
+    function isActiveSupervisor() {
+      return hasRole('square_supervisor');
+    }
+
+    // An active square supervisor reviewing the examinations of [squareId].
+    function isSupervisorOf(squareId) {
+      return isActiveSupervisor()
+        && ownUser().squareId is string
+        && ownUser().squareId == squareId;
+    }
+
+    function awaitingReview(status) {
+      return status in ['submitted', 'pending_review', 'under_review'];
+    }
+
+    function examData(examId) {
+      return get(/databases/$(database)/documents/exams/$(examId)).data;
+    }
+
+    function mosqueData(mosqueId) {
+      return get(/databases/$(database)/documents/mosques/$(mosqueId)).data;
+    }
+
+    // The mosque as it is once the current batch is applied.
+    function mosqueDataAfter(mosqueId) {
+      return getAfter(/databases/$(database)/documents/mosques/$(mosqueId)).data;
+    }
+
+    function squareData(squareId) {
+      return get(/databases/$(database)/documents/squares/$(squareId)).data;
+    }
+
+    function regionExists(regionId) {
+      return exists(/databases/$(database)/documents/regions/$(regionId));
+    }
+
+    function validName(name) {
+      return name is string && name.size() > 0 && name.size() <= 100;
+    }
+
     match /students/{uid} {
       allow create: if signedIn()
         && request.auth.uid == uid
@@ -24,10 +93,64 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // Regions are managed by the General Admin only. An officer reads their
+    // own region. Nothing is deleted; a region is deactivated instead.
+    match /regions/{regionId} {
+      allow read: if isGeneralAdmin() || isOfficerOf(regionId);
+
+      allow create, update: if isGeneralAdmin()
+        && validName(request.resource.data.name)
+        && request.resource.data.isActive is bool
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    // Squares are managed by the General Admin and by the officer of their
+    // region. A square never moves to another region. An officer's queries
+    // must filter on regionId.
+    match /squares/{squareId} {
+      allow read: if managesRegion(resource.data.regionId)
+        || isSupervisorOf(squareId);
+
+      allow create: if managesRegion(request.resource.data.regionId)
+        && regionExists(request.resource.data.regionId)
+        && validName(request.resource.data.name)
+        && request.resource.data.isActive is bool
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if managesRegion(resource.data.regionId)
+        && request.resource.data.regionId == resource.data.regionId
+        && validName(request.resource.data.name)
+        && request.resource.data.isActive is bool
+        && request.resource.data.updatedAt == request.time;
+    }
+
     // Active mosques are readable before sign-in so a student can choose one
     // during registration. Queries must filter on isActive == true.
     match /mosques/{mosqueId} {
       allow read: if resource.data.isActive == true;
+
+      // An officer's queries must filter on regionId.
+      allow read: if managesRegion(resource.data.regionId);
+
+      // A mosque belongs to a square of its region.
+      allow create: if managesRegion(request.resource.data.regionId)
+        && validName(request.resource.data.name)
+        && request.resource.data.isActive is bool
+        && request.resource.data.squareId is string
+        && squareData(request.resource.data.squareId).regionId
+          == request.resource.data.regionId
+        && request.resource.data.updatedAt == request.time;
+
+      // Moving a mosque needs authority over both the region it leaves and
+      // the region it joins, so an officer cannot move one out of the region.
+      allow update: if managesRegion(resource.data.regionId)
+        && managesRegion(request.resource.data.regionId)
+        && validName(request.resource.data.name)
+        && request.resource.data.isActive is bool
+        && request.resource.data.squareId is string
+        && squareData(request.resource.data.squareId).regionId
+          == request.resource.data.regionId
+        && request.resource.data.updatedAt == request.time;
     }
 
     // Course content is readable by any signed-in user.
@@ -58,34 +181,15 @@ service cloud.firestore {
       allow get: if isActiveSupervisor();
     }
 
-    function ownUser() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    // An active square supervisor reviewing the examinations of [squareId].
-    function isActiveSupervisor() {
-      return signedIn()
-        && ownUser().role == 'square_supervisor'
-        && ownUser().isActive == true;
-    }
-
-    function isSupervisorOf(squareId) {
-      return isActiveSupervisor() && ownUser().squareId == squareId;
-    }
-
-    function awaitingReview(status) {
-      return status in ['submitted', 'pending_review', 'under_review'];
-    }
-
-    function examData(examId) {
-      return get(/databases/$(database)/documents/exams/$(examId)).data;
-    }
-
     match /exams/{examId} {
       allow read: if signedIn() && resource.data.studentId == request.auth.uid;
 
       // Queries must filter on squareId.
       allow read: if isSupervisorOf(resource.data.squareId);
+
+      // An examination keeps the region it was started in. An officer's
+      // queries must filter on regionId.
+      allow read: if managesRegion(resource.data.regionId);
 
       // A student starts an examination for themselves. The affiliation must
       // match the student's account, and the course and segment must be
@@ -155,6 +259,13 @@ service cloud.firestore {
     match /evaluations/{evaluationId} {
       allow get: if isSupervisorOf(examData(evaluationId).squareId);
 
+      // The student reads the evaluation of their own examination. It exists
+      // only once the result is approved.
+      allow get: if signedIn()
+        && examData(evaluationId).studentId == request.auth.uid;
+
+      allow get: if managesRegion(examData(evaluationId).regionId);
+
       allow create: if isSupervisorOf(examData(evaluationId).squareId)
         && awaitingReview(examData(evaluationId).status)
         && request.resource.data.keys().hasAll([
@@ -185,6 +296,97 @@ service cloud.firestore {
         && request.resource.data.reviewedAt == request.time
         && request.resource.data.approvedAt == request.time
         && getAfter(/databases/$(database)/documents/exams/$(evaluationId)).data.status == 'approved';
+    }
+
+    // One certificate per passed examination, with the examination's ID. The
+    // supervisor creates it in the batch that approves the result; nobody
+    // changes or deletes it, and a student cannot create one.
+    match /certificates/{certificateId} {
+      // A student's queries must filter on studentId.
+      allow read: if signedIn() && resource.data.studentId == request.auth.uid;
+
+      allow get: if isSupervisorOf(examData(certificateId).squareId)
+        || managesRegion(examData(certificateId).regionId);
+
+      allow create: if isSupervisorOf(examData(certificateId).squareId)
+        && awaitingReview(examData(certificateId).status)
+        && request.resource.data.keys().hasAll([
+          'studentId', 'examId', 'courseId', 'certificateNumber', 'finalScore',
+          'issuedAt', 'fileUrl'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'studentId', 'examId', 'courseId', 'certificateNumber', 'finalScore',
+          'issuedAt', 'fileUrl'
+        ])
+        && request.resource.data.examId == certificateId
+        && request.resource.data.studentId == examData(certificateId).studentId
+        && request.resource.data.courseId == examData(certificateId).courseId
+        && request.resource.data.certificateNumber is string
+        && request.resource.data.certificateNumber.size() > 0
+        && request.resource.data.fileUrl == null
+        && request.resource.data.issuedAt == request.time
+        // Only for the evaluation written in this batch, and only if passed.
+        && getAfter(/databases/$(database)/documents/evaluations/$(certificateId)).data.result == 'passed'
+        && request.resource.data.finalScore
+          == getAfter(/databases/$(database)/documents/evaluations/$(certificateId)).data.finalScore;
+    }
+
+    // A notification is addressed either to one account (userId) or to the
+    // supervisor of a square (squareId). It is written in the batch of the
+    // event it reports, and afterwards only marked as read.
+    match /notifications/{notificationId} {
+      // Queries must filter on userId, or on squareId for a supervisor.
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow read: if isSupervisorOf(resource.data.squareId);
+
+      allow update: if ((signedIn() && resource.data.userId == request.auth.uid)
+          || isSupervisorOf(resource.data.squareId))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
+        && request.resource.data.isRead == true;
+
+      // The student tells the supervisor of the examination's square that an
+      // examination was submitted, in the batch that submits it.
+      allow create: if signedIn()
+        && validNotification()
+        && request.resource.data.type == 'exam_submitted'
+        && notificationId == request.resource.data.relatedId + '_submitted'
+        && request.resource.data.userId == null
+        && request.resource.data.squareId
+          == examData(request.resource.data.relatedId).squareId
+        && examData(request.resource.data.relatedId).studentId == request.auth.uid
+        && examData(request.resource.data.relatedId).status == 'in_progress'
+        && getAfter(/databases/$(database)/documents/exams/$(request.resource.data.relatedId)).data.status == 'pending_review';
+
+      // The supervisor tells the student that the result was approved, in the
+      // batch that approves it.
+      allow create: if validNotification()
+        && request.resource.data.type == 'exam_approved'
+        && notificationId == request.resource.data.relatedId + '_result'
+        && request.resource.data.squareId == null
+        && request.resource.data.userId
+          == examData(request.resource.data.relatedId).studentId
+        && isSupervisorOf(examData(request.resource.data.relatedId).squareId)
+        && awaitingReview(examData(request.resource.data.relatedId).status)
+        && getAfter(/databases/$(database)/documents/exams/$(request.resource.data.relatedId)).data.status == 'approved';
+    }
+
+    function validNotification() {
+      let data = request.resource.data;
+      return data.keys().hasAll([
+          'userId', 'squareId', 'title', 'body', 'type', 'relatedId', 'isRead',
+          'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'userId', 'squareId', 'title', 'body', 'type', 'relatedId', 'isRead',
+          'createdAt'
+        ])
+        && data.title is string
+        && data.title.size() <= 200
+        && data.body is string
+        && data.body.size() <= 500
+        && data.relatedId is string
+        && data.isRead == false
+        && data.createdAt == request.time;
     }
 
     // One submission per examination, with the examination's ID. It is never
@@ -246,29 +448,88 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/exams/$(request.resource.data.examId)).data.status == 'in_progress';
     }
 
-    function mosqueData(mosqueId) {
-      return get(/databases/$(database)/documents/mosques/$(mosqueId)).data;
-    }
-
-    match /users/{uid} {
-      allow get: if signedIn() && request.auth.uid == uid;
-
-      // A supervisor reads the students of their square.
-      allow get: if resource.data.role == 'student'
-        && isSupervisorOf(resource.data.squareId);
-
-      // Self-registration always creates an active student whose square and
-      // region come from the chosen mosque.
-      allow create: if signedIn()
-        && request.auth.uid == uid
-        && request.resource.data.keys().hasAll([
+    // The fields every users document holds.
+    function hasAccountKeys() {
+      return request.resource.data.keys().hasAll([
           'uid', 'name', 'email', 'phone', 'role', 'regionId', 'squareId',
           'mosqueId', 'isActive', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.keys().hasOnly([
           'uid', 'name', 'email', 'phone', 'role', 'regionId', 'squareId',
           'mosqueId', 'isActive', 'createdAt', 'updatedAt'
+        ]);
+    }
+
+    // Who may give an administrative account its scope: the General Admin
+    // links a region officer to a region; the General Admin or the officer of
+    // the region links a square supervisor to a square of that region.
+    function validStaffScope(role, data) {
+      return data.regionId is string
+        && ((role == 'region_officer'
+            && isGeneralAdmin()
+            && data.squareId == null
+            && regionExists(data.regionId))
+          || (role == 'square_supervisor'
+            && managesRegion(data.regionId)
+            && (data.squareId == null
+              || squareData(data.squareId).regionId == data.regionId)));
+    }
+
+    function inviteData(uid) {
+      return get(/databases/$(database)/documents/staff_invites/$(uid)).data;
+    }
+
+    // An administrator invites an existing Firebase Authentication account,
+    // named by its UID, to a role and a scope the administrator manages. The
+    // invited account then creates its own users document from it. An
+    // invitation holds no password and is never changed; the administrator
+    // who wrote it can delete it while it is unused.
+    match /staff_invites/{uid} {
+      allow get: if signedIn()
+        && (request.auth.uid == uid || managesRegion(resource.data.regionId));
+
+      allow create: if signedIn()
+        && request.auth.uid != uid
+        && request.resource.data.keys().hasAll([
+          'name', 'email', 'phone', 'role', 'regionId', 'squareId',
+          'createdBy', 'createdAt'
         ])
+        && request.resource.data.keys().hasOnly([
+          'name', 'email', 'phone', 'role', 'regionId', 'squareId',
+          'createdBy', 'createdAt'
+        ])
+        && validName(request.resource.data.name)
+        && request.resource.data.email is string
+        && request.resource.data.email.size() > 0
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 20
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && !exists(/databases/$(database)/documents/users/$(uid))
+        && validStaffScope(request.resource.data.role, request.resource.data);
+
+      allow delete: if signedIn()
+        && resource.data.createdBy == request.auth.uid
+        && !exists(/databases/$(database)/documents/users/$(uid));
+    }
+
+    match /users/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+
+      // A supervisor reads the students of their square. Queries must filter
+      // on role and squareId.
+      allow read: if resource.data.role == 'student'
+        && isSupervisorOf(resource.data.squareId);
+
+      // An officer reads the accounts of their region; queries must filter on
+      // regionId. The General Admin reads every account.
+      allow read: if managesRegion(resource.data.regionId);
+
+      // Self-registration always creates an active student whose square and
+      // region come from the chosen mosque.
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && hasAccountKeys()
         && request.resource.data.uid == uid
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.role == 'student'
@@ -286,6 +547,55 @@ service cloud.firestore {
           == mosqueData(request.resource.data.mosqueId).squareId
         && request.resource.data.regionId
           == mosqueData(request.resource.data.mosqueId).regionId;
+
+      // An administrative account writes its own users document, so the
+      // document always belongs to a Firebase Authentication account. It must
+      // repeat the invitation an administrator wrote for this UID, which is
+      // where the role and the scope were authorized. Nobody can write an
+      // administrative users document for another UID, and a General Admin
+      // is never created here.
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && hasAccountKeys()
+        && request.resource.data.uid == uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role in ['region_officer', 'square_supervisor']
+        && request.resource.data.mosqueId == null
+        && request.resource.data.isActive == true
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.role == inviteData(uid).role
+        && request.resource.data.name == inviteData(uid).name
+        && request.resource.data.email == inviteData(uid).email
+        && request.resource.data.phone == inviteData(uid).phone
+        && request.resource.data.regionId == inviteData(uid).regionId
+        && request.resource.data.squareId == inviteData(uid).squareId;
+
+      // Nobody changes their own account, and the role, the email and the
+      // mosque of an account never change. A General Admin account is never
+      // changed from the application. A student keeps the square and region
+      // of their mosque, so those change only when the mosque itself moves:
+      // the mosque is read as it is after the write, which lets the mosque
+      // and its students move in one batch.
+      allow update: if signedIn()
+        && request.auth.uid != uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'phone', 'isActive', 'regionId', 'squareId', 'updatedAt'
+        ])
+        && validName(request.resource.data.name)
+        && request.resource.data.isActive is bool
+        && request.resource.data.updatedAt == request.time
+        && ((resource.data.role in ['region_officer', 'square_supervisor']
+            && (resource.data.role == 'region_officer'
+              || managesRegion(resource.data.regionId))
+            && validStaffScope(resource.data.role, request.resource.data))
+          || (resource.data.role == 'student'
+            && managesRegion(resource.data.regionId)
+            && managesRegion(request.resource.data.regionId)
+            && request.resource.data.squareId
+              == mosqueDataAfter(resource.data.mosqueId).squareId
+            && request.resource.data.regionId
+              == mosqueDataAfter(resource.data.mosqueId).regionId));
     }
   }
 }

@@ -23,6 +23,20 @@ abstract final class RouteNames {
   static String studentExamReview(String examId) =>
       '/student/exams/$examId/review';
 
+  static const String studentExamResultPattern =
+      '/student/exams/:examId/result';
+
+  static String studentExamResult(String examId) =>
+      '/student/exams/$examId/result';
+
+  static const String studentExamCertificatePattern =
+      '/student/exams/:examId/certificate';
+
+  static String studentExamCertificate(String examId) =>
+      '/student/exams/$examId/certificate';
+
+  static const String studentNotifications = '/student/notifications';
+  static const String studentCertificates = '/student/profile/certificates';
   static const String studentProfile = '/student/profile';
   static const String studentPersonalInfo = '/student/profile/info';
   static const String studentCourseDetailsPattern =

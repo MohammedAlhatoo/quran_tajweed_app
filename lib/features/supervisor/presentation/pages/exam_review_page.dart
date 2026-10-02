@@ -8,6 +8,7 @@ import '../../../../core/constants/surah_names.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/state_views.dart';
+import '../../../exams/domain/entities/exam.dart';
 import '../../../exams/domain/entities/exam_segment.dart';
 import '../../../questions/presentation/widgets/exam_action_button.dart';
 import '../../domain/services/exam_scoring.dart';
@@ -78,7 +79,7 @@ class _ReviewView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final student = review.student;
-    final phone = student.phone;
+    final phone = student?.phone;
     final submittedAt =
         review.submission.submittedAt ?? review.exam.submittedAt;
 
@@ -88,13 +89,20 @@ class _ReviewView extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
         children: [
           const _SectionTitle('الطالب'),
-          _InfoCard(
-            rows: [
-              ('الاسم', student.name),
-              if (phone != null && phone.isNotEmpty) ('الهاتف', phone),
-              ('البريد الإلكتروني', student.email),
-            ],
-          ),
+          if (student == null)
+            const _Card(
+              child: _Value(
+                'بيانات الطالب غير متاحة. قد يكون الطالب انتقل إلى مربع آخر.',
+              ),
+            )
+          else
+            _InfoCard(
+              rows: [
+                ('الاسم', student.name),
+                if (phone != null && phone.isNotEmpty) ('الهاتف', phone),
+                ('البريد الإلكتروني', student.email),
+              ],
+            ),
           const SizedBox(height: 24),
           const _SectionTitle('الاختبار'),
           _InfoCard(
@@ -127,6 +135,8 @@ class _ReviewView extends StatelessWidget {
           const _SectionTitle('التقييم'),
           if (review.exam.status.isAwaitingReview)
             _EvaluationForm(
+              exam: review.exam,
+              courseName: review.course?.name ?? 'التجويد',
               theoryScore: review.theoryScore,
               onApproved: onApproved,
             )
@@ -383,7 +393,15 @@ class _RecordingCard extends StatelessWidget {
 /// The recitation score entered by the supervisor, the scores derived from
 /// it, and the approval of the result.
 class _EvaluationForm extends StatelessWidget {
-  const _EvaluationForm({required this.theoryScore, required this.onApproved});
+  const _EvaluationForm({
+    required this.exam,
+    required this.courseName,
+    required this.theoryScore,
+    required this.onApproved,
+  });
+
+  final Exam exam;
+  final String courseName;
 
   /// Null when the theory score cannot be calculated.
   final int? theoryScore;
@@ -410,7 +428,13 @@ class _EvaluationForm extends StatelessWidget {
         ],
       ),
     );
-    if (confirmed ?? false) await cubit.approve(theoryScore: theoryScore);
+    if (confirmed ?? false) {
+      await cubit.approve(
+        exam: exam,
+        courseName: courseName,
+        theoryScore: theoryScore,
+      );
+    }
   }
 
   @override

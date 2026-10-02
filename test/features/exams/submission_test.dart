@@ -31,6 +31,7 @@ class _FakeSubmissionRepository implements SubmissionRepository {
   Future<void> submitExam({
     required String examId,
     required String studentId,
+    required String studentName,
     required List<SubmissionAnswer> answers,
   }) async {
     if (failure case final failure?) throw failure;
@@ -70,6 +71,7 @@ void main() {
       recordings: recordings,
       examId: 'exam-1',
       studentId: 'uid-1',
+      studentName: 'طالب',
     );
   });
 
