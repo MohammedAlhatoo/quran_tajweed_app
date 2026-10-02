@@ -1,3 +1,7 @@
+/// The Storage path of the recitation recording of [examId].
+String recitationRecordingPath(String examId) =>
+    'exam_recordings/$examId/recitation.m4a';
+
 /// All methods throw `AppFailure` on error.
 abstract interface class RecordingRepository {
   /// Uploads the recitation recording of [examId] from the local [filePath],

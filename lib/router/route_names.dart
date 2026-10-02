@@ -17,6 +17,12 @@ abstract final class RouteNames {
   static String studentExamQuestions(String examId) =>
       '/student/exams/$examId/questions';
 
+  static const String studentExamReviewPattern =
+      '/student/exams/:examId/review';
+
+  static String studentExamReview(String examId) =>
+      '/student/exams/$examId/review';
+
   static const String studentProfile = '/student/profile';
   static const String studentPersonalInfo = '/student/profile/info';
   static const String studentCourseDetailsPattern =

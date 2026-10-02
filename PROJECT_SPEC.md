@@ -1588,7 +1588,7 @@ Phase 1 decisions approved (see "Approved Phase 1 Decisions").
 Phase 2 and Phase 3 are Future Work only.
 Project analysis completed (Implementation Order step 1).
 Architecture confirmed (Implementation Order step 2).
-Implementation Order steps 3-11 implemented.
+Implementation Order steps 3-12 implemented.
 AI is not part of Phase 1.
 Figma MCP is connected to Claude Code.
 ```
@@ -1597,6 +1597,8 @@ Open items: the approved Quran text and Mushaf font have not been added, and Clo
 
 Recording (step 10): the recitation is uploaded to `exam_recordings/{examId}/recitation.m4a`, and re-recording is allowed while the examination is `in_progress`. `recordingUrl` is written to `submissions` in step 12. `storage.rules` is not deployed yet, and recording has not been tested on a device.
 
-Theory Questions (step 11): the ten questions are read from `exam_questions` and shown one per screen, opened from the examination screen once the recitation is uploaded. The answers are kept in memory until submission and are lost if the app is closed before it. The whole question text is shown in one style, because `question` is a single string. The button after the last question is disabled until step 12 adds the submission review.
+Theory Questions (step 11): the ten questions are read from `exam_questions` and shown one per screen, opened from the examination screen once the recitation is uploaded. The answers are kept in memory until submission and are lost if the app is closed before it. The whole question text is shown in one style, because `question` is a single string.
 
-The next step is Implementation Order step 12: Submission.
+Submission (step 12): the student reviews the recording status and the ten answers, then submits. One batch creates `submissions/{examId}` and moves the examination from `in_progress` to `pending_review` with `submittedAt`. `recordingUrl` holds the Storage path of the recording, not a download link. Each item of `answers` is `{order, questionId, answer}`. The review and confirmation screens have no Figma frame and follow the style of the questions screen. Deferred to steps 13-15: creating the `evaluations` record and calculating `theoryScore`, because the student can neither read `question_answers` nor write `evaluations` and Cloud Functions are deferred. The updated `firestore.rules` are not deployed yet, and submission has not been tested against Firebase.
+
+The next step is Implementation Order step 13: Supervisor Module.

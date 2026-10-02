@@ -13,9 +13,6 @@ class FirebaseRecordingRepository implements RecordingRepository {
 
   final StorageService _storage;
 
-  static String _path(String examId) =>
-      'exam_recordings/$examId/recitation.m4a';
-
   @override
   Future<void> uploadRecording({
     required String examId,
@@ -23,7 +20,7 @@ class FirebaseRecordingRepository implements RecordingRepository {
   }) async {
     try {
       await _storage.uploadFile(
-        path: _path(examId),
+        path: recitationRecordingPath(examId),
         file: File(filePath),
         contentType: 'audio/mp4',
       );
@@ -35,7 +32,7 @@ class FirebaseRecordingRepository implements RecordingRepository {
   @override
   Future<bool> hasRecording(String examId) async {
     try {
-      return await _storage.exists(_path(examId));
+      return await _storage.exists(recitationRecordingPath(examId));
     } on FirebaseException catch (e) {
       throw AppFailure.fromFirebase(e);
     }

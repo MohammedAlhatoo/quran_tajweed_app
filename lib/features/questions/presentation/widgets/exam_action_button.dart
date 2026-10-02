@@ -9,17 +9,19 @@ class ExamActionButton extends StatelessWidget {
     super.key,
     required this.label,
     required this.onPressed,
+    this.isLoading = false,
   });
 
   final String label;
   final VoidCallback? onPressed;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppTheme.radius),
-        boxShadow: onPressed == null
+        boxShadow: onPressed == null && !isLoading
             ? null
             : const [
                 BoxShadow(
@@ -40,8 +42,17 @@ class ExamActionButton extends StatelessWidget {
         style: FilledButton.styleFrom(
           backgroundColor: AppColors.questionsAction,
         ),
-        onPressed: onPressed,
-        child: Text(label),
+        // Stays enabled-looking while loading, but ignores taps.
+        onPressed: isLoading ? () {} : onPressed,
+        child: isLoading
+            ? const SizedBox.square(
+                dimension: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: AppColors.onPrimary,
+                ),
+              )
+            : Text(label),
       ),
     );
   }

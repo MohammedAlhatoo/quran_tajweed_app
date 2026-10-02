@@ -8,4 +8,5 @@ abstract final class FirebaseCollections {
   static const String examSegments = 'exam_segments';
   static const String questionBank = 'question_bank';
   static const String examQuestions = 'exam_questions';
+  static const String submissions = 'submissions';
 }

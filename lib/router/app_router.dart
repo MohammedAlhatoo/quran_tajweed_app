@@ -23,7 +23,10 @@ import '../features/exams/data/services/device_recitation_audio.dart';
 import '../features/exams/domain/repositories/exams_repository.dart';
 import '../features/exams/domain/repositories/recording_repository.dart';
 import '../features/exams/presentation/pages/exam_history_page.dart';
+import '../features/exams/domain/repositories/submission_repository.dart';
 import '../features/exams/presentation/pages/exam_segment_page.dart';
+import '../features/exams/presentation/pages/submission_review_page.dart';
+import '../features/exams/presentation/state/submission_cubit.dart';
 import '../features/exams/presentation/state/exam_cubit.dart';
 import '../features/exams/presentation/state/exam_history_cubit.dart';
 import '../features/exams/presentation/state/recording_cubit.dart';
@@ -86,6 +89,10 @@ abstract final class AppRouter {
   /// The student's area: four tabs inside the shell, and full-screen pages
   /// that open above it.
   static List<RouteBase> _studentRoutes(AuthCubit authCubit) {
+    // The shell's cubit, kept so a submitted examination can refresh the
+    // history from a screen outside the shell.
+    ExamHistoryCubit? examHistory;
+
     return [
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) => MultiBlocProvider(
@@ -97,7 +104,7 @@ abstract final class AppRouter {
             BlocProvider(
               create: (context) {
                 final authState = authCubit.state;
-                return ExamHistoryCubit(
+                return examHistory = ExamHistoryCubit(
                   context.read<ExamsRepository>(),
                   authState is AuthAuthenticated ? authState.user.uid : '',
                 )..load();
@@ -197,6 +204,42 @@ abstract final class AppRouter {
                       _questionsCubit(context, authCubit, state),
                   child: const QuestionsPage(),
                 );
+        },
+      ),
+      GoRoute(
+        path: RouteNames.studentExamReviewPattern,
+        builder: (context, state) {
+          // The questions screen passes its cubit along with the answers.
+          final shared = state.extra;
+          final authState = authCubit.state;
+          return MultiBlocProvider(
+            providers: [
+              shared is QuestionsCubit
+                  ? BlocProvider.value(value: shared)
+                  : BlocProvider(
+                      create: (context) =>
+                          _questionsCubit(context, authCubit, state),
+                    ),
+              BlocProvider(
+                create: (context) => SubmissionCubit(
+                  submissions: context.read<SubmissionRepository>(),
+                  recordings: context.read<RecordingRepository>(),
+                  examId: state.pathParameters['examId']!,
+                  studentId: authState is AuthAuthenticated
+                      ? authState.user.uid
+                      : '',
+                )..load(),
+              ),
+            ],
+            child: SubmissionReviewPage(
+              onDone: () {
+                // The history still shows the examination as in progress.
+                final history = examHistory;
+                if (history != null && !history.isClosed) history.load();
+                context.go(RouteNames.studentExams);
+              },
+            ),
+          );
         },
       ),
       GoRoute(

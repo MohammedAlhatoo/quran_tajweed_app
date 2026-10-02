@@ -16,7 +16,9 @@ import 'features/courses/domain/repositories/courses_repository.dart';
 import 'features/exams/data/repositories/firebase_recording_repository.dart';
 import 'features/exams/data/repositories/firestore_exams_repository.dart';
 import 'features/exams/domain/repositories/exams_repository.dart';
+import 'features/exams/data/repositories/firestore_submission_repository.dart';
 import 'features/exams/domain/repositories/recording_repository.dart';
+import 'features/exams/domain/repositories/submission_repository.dart';
 import 'features/questions/data/repositories/firestore_questions_repository.dart';
 import 'features/questions/domain/repositories/questions_repository.dart';
 import 'features/student/data/repositories/firestore_student_profile_repository.dart';
@@ -73,6 +75,9 @@ class _QuranTajweedAppState extends State<QuranTajweedApp> {
         RepositoryProvider<RecordingRepository>(
           create: (_) =>
               FirebaseRecordingRepository(storageService: StorageService()),
+        ),
+        RepositoryProvider<SubmissionRepository>(
+          create: (_) => FirestoreSubmissionRepository(),
         ),
         RepositoryProvider<QuestionsRepository>(
           create: (_) => FirestoreQuestionsRepository(),

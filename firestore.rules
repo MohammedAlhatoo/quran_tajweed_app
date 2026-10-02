@@ -97,6 +97,48 @@ service cloud.firestore {
         && request.resource.data.segmentId is string
         && get(/databases/$(database)/documents/exam_segments/$(request.resource.data.segmentId)).data.isActive == true
         && request.resource.data.courseId in get(/databases/$(database)/documents/exam_segments/$(request.resource.data.segmentId)).data.courseIds;
+
+      // The student submits the examination: only the status and the two
+      // timestamps change, in the same batch that creates the submission.
+      allow update: if signedIn()
+        && resource.data.studentId == request.auth.uid
+        && resource.data.status == 'in_progress'
+        && request.resource.data.status == 'pending_review'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'submittedAt', 'updatedAt'
+        ])
+        && request.resource.data.submittedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/submissions/$(examId));
+    }
+
+    // One submission per examination, with the examination's ID. It is never
+    // changed after it is created. Not enforced here: that the recording
+    // exists in Storage, and that the answers match the examination's
+    // questions.
+    match /submissions/{submissionId} {
+      allow read: if signedIn() && resource.data.studentId == request.auth.uid;
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll([
+          'examId', 'studentId', 'recordingUrl', 'answers', 'submittedAt',
+          'createdAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'examId', 'studentId', 'recordingUrl', 'answers', 'submittedAt',
+          'createdAt'
+        ])
+        && request.resource.data.examId == submissionId
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.recordingUrl
+          == 'exam_recordings/' + submissionId + '/recitation.m4a'
+        && request.resource.data.answers is list
+        && request.resource.data.answers.size() == 10
+        && request.resource.data.submittedAt == request.time
+        && request.resource.data.createdAt == request.time
+        && get(/databases/$(database)/documents/exams/$(submissionId)).data.studentId == request.auth.uid
+        && get(/databases/$(database)/documents/exams/$(submissionId)).data.status == 'in_progress'
+        && getAfter(/databases/$(database)/documents/exams/$(submissionId)).data.status == 'pending_review';
     }
 
     match /exam_questions/{examQuestionId} {

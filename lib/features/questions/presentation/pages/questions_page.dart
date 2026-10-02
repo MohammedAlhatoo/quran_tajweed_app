@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_assets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/state_views.dart';
+import '../../../../router/route_names.dart';
 import '../state/questions_cubit.dart';
 import '../widgets/exam_action_button.dart';
 
@@ -120,11 +122,17 @@ class _QuestionView extends StatelessWidget {
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 13, 24, 16),
-            // The step after the last question is the submission review,
-            // which is not built yet.
+            // The submission review follows the last question.
             child: ExamActionButton(
               label: 'التالي',
-              onPressed: state.isLast || answer == null ? null : cubit.next,
+              onPressed: answer == null
+                  ? null
+                  : state.isLast
+                  ? () => context.push(
+                      RouteNames.studentExamReview(question.examId),
+                      extra: cubit,
+                    )
+                  : cubit.next,
             ),
           ),
         ),
