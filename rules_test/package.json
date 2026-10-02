@@ -1,0 +1,14 @@
+{
+  "name": "quran-tajweed-rules-test",
+  "private": true,
+  "type": "module",
+  "description": "Local tests of firestore.rules and storage.rules against the Firebase Emulator Suite. Never touches a real Firebase project.",
+  "scripts": {
+    "test": "node --test",
+    "test:emulator": "cd .. && firebase emulators:exec --only firestore,storage --project demo-quran-exam \"npm --prefix rules_test test\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.19.0"
+  }
+}
