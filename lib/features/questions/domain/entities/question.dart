@@ -11,15 +11,21 @@ class Question {
     required this.question,
     required this.options,
     required this.isActive,
+    this.difficulty = 1,
   });
 
   final String id;
   final String courseId;
   final String ruleId;
+
+  /// A `QuestionType` value.
   final String type;
   final String question;
   final List<String> options;
   final bool isActive;
+
+  /// From 1 (easy) to 3 (hard). A document without it is read as easy.
+  final int difficulty;
 
   /// Returns null when the document has no course, type or question text.
   static Question? fromMap(String id, Map<String, dynamic> data) {
@@ -30,6 +36,7 @@ class Question {
     if (question is! String || question.isEmpty) return null;
 
     final options = data['options'];
+    final difficulty = data['difficulty'];
     return Question(
       id: id,
       courseId: courseId,
@@ -40,6 +47,7 @@ class Question {
           ? options.whereType<String>().toList()
           : const [],
       isActive: data['isActive'] == true,
+      difficulty: difficulty is int ? difficulty : 1,
     );
   }
 }

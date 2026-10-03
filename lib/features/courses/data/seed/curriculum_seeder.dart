@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart';
+
 import '../../../../core/constants/firebase_collections.dart';
+import '../../../questions/data/seed/question_bank_seed.dart';
 import '../../domain/entities/course_level.dart';
 import 'curriculum_seed.dart';
 
@@ -25,21 +28,38 @@ class CurriculumSeedResult {
     required this.rulesCreated,
     required this.rulesUpdated,
     required this.courseRulesCreated,
+    required this.questionsCreated,
+    required this.questionsUpdated,
+    required this.answersWritten,
   });
 
   final int coursesCreated;
   final int rulesCreated;
   final int rulesUpdated;
   final int courseRulesCreated;
+  final int questionsCreated;
+  final int questionsUpdated;
+
+  /// The `question_answers` documents created or corrected.
+  final int answersWritten;
 
   bool get wroteNothing =>
-      coursesCreated + rulesCreated + rulesUpdated + courseRulesCreated == 0;
+      coursesCreated +
+          rulesCreated +
+          rulesUpdated +
+          courseRulesCreated +
+          questionsCreated +
+          questionsUpdated +
+          answersWritten ==
+      0;
 }
 
-/// Writes the four courses, the Tajweed rules and their links.
+/// Writes the four courses, the Tajweed rules, their links, and the question
+/// bank with its answers.
 ///
 /// It can be run again safely: it adds what is missing and never creates a
-/// second copy of a course, a rule or a link. The data belongs to no user.
+/// second copy of a course, a rule, a link or a question. The data belongs to
+/// no user.
 class CurriculumSeeder {
   const CurriculumSeeder(this._store);
 
@@ -49,11 +69,15 @@ class CurriculumSeeder {
     final courses = await _seedCourses();
     final rules = await _seedRules();
     final links = await _seedCourseRules(courses.ids, rules.ids);
+    final questions = await _seedQuestions(courses.ids, rules.ids);
     return CurriculumSeedResult(
       coursesCreated: courses.created,
       rulesCreated: rules.created,
       rulesUpdated: rules.updated,
       courseRulesCreated: links,
+      questionsCreated: questions.created,
+      questionsUpdated: questions.updated,
+      answersWritten: questions.answers,
     );
   }
 
@@ -147,4 +171,67 @@ class CurriculumSeeder {
     await _store.writeAll(FirebaseCollections.courseRules, writes);
     return writes.length;
   }
+
+  /// A question is written once for every course that covers its rule, under
+  /// `{courseId}_{key}`, and its correct answer under the same ID in
+  /// `question_answers` only. An existing question keeps its `isActive`; its
+  /// definition and its answer are brought up to date.
+  Future<({int created, int updated, int answers})> _seedQuestions(
+    Map<CourseLevel, String> courseIds,
+    Map<String, String> ruleIds,
+  ) async {
+    final existing = await _store.readAll(FirebaseCollections.questionBank);
+    final existingAnswers = await _store.readAll(
+      FirebaseCollections.questionAnswers,
+    );
+    final questions = <String, Map<String, Object?>>{};
+    final answers = <String, Map<String, Object?>>{};
+    var created = 0;
+    for (final course in courseSeeds) {
+      final courseId = courseIds[course.level]!;
+      for (final seed in questionsOfLevel(course.level)) {
+        final id = '${courseId}_${seed.key}';
+        if (existingAnswers[id]?['correctAnswer'] != seed.correctAnswer) {
+          answers[id] = seed.answerToMap();
+        }
+        final definition = seed.toMap(
+          courseId: courseId,
+          ruleId: ruleIds[seed.ruleId]!,
+          difficulty: questionDifficulty(seed),
+        );
+        final stored = existing[id];
+        if (stored == null) {
+          created++;
+          questions[id] = {
+            ...definition,
+            'isActive': true,
+            'createdAt': _store.timestamp,
+            'updatedAt': _store.timestamp,
+          };
+          continue;
+        }
+        final changed = definition.entries.any(
+          (field) => !_sameValue(stored[field.key], field.value),
+        );
+        if (changed) {
+          questions[id] = {...definition, 'updatedAt': _store.timestamp};
+        }
+      }
+    }
+    // The answers go first, so a question is never selectable without one.
+    await _store.writeAll(FirebaseCollections.questionAnswers, answers);
+    await _store.writeAll(FirebaseCollections.questionBank, questions);
+    return (
+      created: created,
+      updated: questions.length - created,
+      answers: answers.length,
+    );
+  }
+
+  /// Lists are compared by their items: a list read from the store is never
+  /// the list of the seed itself.
+  static bool _sameValue(Object? stored, Object? seed) =>
+      stored is List && seed is List
+      ? listEquals(stored, seed)
+      : stored == seed;
 }
