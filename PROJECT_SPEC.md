@@ -32,7 +32,7 @@ The following decisions are approved and take priority over any other wording in
 7. **Segment selection:** Quran data is linked to Tajweed rule data for ayahs/segments and pages. This linking data is stored in Firestore (predefined segments in `exam_segments`, rule definitions in `tajweed_rules`). The system selects segments randomly according to the course type and its rules, taking Rule Density into account. This works in Phase 1 without AI.
 8. **Scoring:** Final score is out of 100 — 80% recitation, 20% theory questions. The approved pass mark is 70/100.
 9. **Target platforms:** Phase 1 targets Android and iOS. The project stays a multi-platform Flutter application and is not restricted to Android.
-10. **Application ID:** The current `applicationId` (`com.example.quran_tajweed_app`) is kept as is for now.
+10. **Application ID:** The approved final application ID is `com.quranexam.app`. It is not applied yet: the project still uses `com.example.quran_tajweed_app` until the package name and the Firebase app registration are changed together in a dedicated step.
 11. **Routing:** `go_router` is the approved centralized routing solution.
 12. **Existing placeholder files:** The empty files under `lib/` (all except `firebase_options.dart`) are rewritten from scratch according to the architecture in sections 38–42, each in its own implementation step. No unnecessary demo content is kept.
 13. **Packages and structure:** No package or structure outside this specification is added without a clear reason.

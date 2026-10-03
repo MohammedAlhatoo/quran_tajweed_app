@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Behind the logo on the launch screen: the top color of the Flutter
+         splash screen that follows it. -->
+    <color name="launch_background">#173A34</color>
+</resources>

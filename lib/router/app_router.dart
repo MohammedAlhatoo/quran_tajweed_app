@@ -83,6 +83,9 @@ abstract final class AppRouter {
 
     return GoRouter(
       initialLocation: RouteNames.splash,
+      // On the web the address bar keeps the last page; every launch still
+      // starts from the splash screen.
+      overridePlatformDefaultLocation: true,
       refreshListenable: Listenable.merge([
         _StreamListenable(authCubit.stream),
         splashHold,
@@ -589,10 +592,11 @@ abstract final class AppRouter {
         if (location == RouteNames.splash) {
           return onboardingSeen ? RouteNames.login : RouteNames.onboarding;
         }
+        if (location == RouteNames.onboarding) {
+          return onboardingSeen ? RouteNames.login : null;
+        }
         final isPublicPage =
-            location == RouteNames.onboarding ||
-            location == RouteNames.login ||
-            location == RouteNames.register;
+            location == RouteNames.login || location == RouteNames.register;
         return isPublicPage ? null : RouteNames.login;
     }
   }

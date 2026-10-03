@@ -61,6 +61,24 @@ void main() {
     }
   });
 
+  test('does not reopen the onboarding once it has been seen', () {
+    const signedOutStates = [
+      AuthUnauthenticated(),
+      AuthError('خطأ'),
+      AuthPasswordResetSent('user@example.com'),
+    ];
+    for (final state in signedOutStates) {
+      expect(
+        AppRouter.redirectFor(
+          state,
+          RouteNames.onboarding,
+          onboardingSeen: true,
+        ),
+        RouteNames.login,
+      );
+    }
+  });
+
   test('ignores the onboarding for a signed-in user', () {
     for (final MapEntry(key: role, value: home) in homes.entries) {
       for (final seen in [true, false]) {

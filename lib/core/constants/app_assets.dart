@@ -4,8 +4,17 @@ abstract final class AppAssets {
 
   /// Whole screens exported from the design. `Onboarding.png` is the same
   /// screen with the start button drawn on it, kept as a reference only.
-  static const String splashArtwork = 'assets/images/Splash.png';
   static const String onboardingArtwork = 'assets/images/OnboardingClean.png';
+
+  /// The splash screen in separate pieces, laid over [splashBackground].
+  /// `Splash.png` is the whole screen in one image, kept as a reference only.
+  static const String splashBackground = 'assets/images/splash_background.png';
+  static const String splashLogo = 'assets/images/logo_splash.svg';
+  static const String splashBrand = 'assets/images/splash_brand.svg';
+  static const String splashTitle = 'assets/images/splash_title.svg';
+  static const String splashTagline = 'assets/images/splash_tagline.svg';
+  static const String splashDescription =
+      'assets/images/splash_description.svg';
 
   static const String mailIcon= 'assets/icons/mail.svg';
   static const String lockIcon = 'assets/icons/lock.svg';
