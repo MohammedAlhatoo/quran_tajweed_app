@@ -8,8 +8,10 @@ import '../../../../core/constants/surah_names.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/state_views.dart';
+import '../../../courses/domain/entities/tajweed_rule.dart';
 import '../../../exams/domain/entities/exam.dart';
 import '../../../exams/domain/entities/exam_segment.dart';
+import '../../../exams/domain/entities/recitation_error.dart';
 import '../../../questions/presentation/widgets/exam_action_button.dart';
 import '../../domain/services/exam_scoring.dart';
 import '../state/evaluation_cubit.dart';
@@ -18,7 +20,7 @@ import '../state/recitation_playback_cubit.dart';
 
 /// One submitted examination as the supervisor reviews it: the student, the
 /// Quran segment, the recitation recording, the theory answers, and the
-/// evaluation that approves the result.
+/// evaluation that approves the result with its notes and Tajweed errors.
 class ExamReviewPage extends StatelessWidget {
   const ExamReviewPage({super.key, required this.onApproved});
 
@@ -136,6 +138,8 @@ class _ReviewView extends StatelessWidget {
           if (review.exam.status.isAwaitingReview)
             _EvaluationForm(
               exam: review.exam,
+              segment: review.segment,
+              rules: review.rules,
               courseName: review.course?.name ?? 'التجويد',
               theoryScore: review.theoryScore,
               onApproved: onApproved,
@@ -390,17 +394,185 @@ class _RecordingCard extends StatelessWidget {
   }
 }
 
+/// One recorded error: its rule, its position and its description.
+class _ErrorTile extends StatelessWidget {
+  const _ErrorTile({required this.error, required this.onRemove});
+
+  final RecitationError error;
+
+  /// Null when the error can no longer be removed.
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final position = error.position;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _Value(error.ruleName ?? 'قاعدة غير متاحة'),
+              if (position != null) _Label(position),
+              if (error.description.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  error.description,
+                  style: AppTextStyles.cairo(
+                    size: 14,
+                    weight: FontWeight.w500,
+                    color: AppColors.bodyText,
+                    lineHeight: 22,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'حذف الخطأ',
+          onPressed: onRemove,
+          icon: const Icon(Icons.delete_outline_rounded),
+          color: AppColors.danger,
+        ),
+      ],
+    );
+  }
+}
+
+/// What the supervisor enters for one error.
+typedef _ErrorDraft = ({
+  TajweedRule rule,
+  int? ayahNumber,
+  String word,
+  String description,
+});
+
+/// Asks for the rule, the position and the description of one error.
+class _ErrorDialog extends StatefulWidget {
+  const _ErrorDialog({required this.rules, required this.segment});
+
+  final List<TajweedRule> rules;
+  final ExamSegment segment;
+
+  @override
+  State<_ErrorDialog> createState() => _ErrorDialogState();
+}
+
+class _ErrorDialogState extends State<_ErrorDialog> {
+  final _word = TextEditingController();
+  final _description = TextEditingController();
+  TajweedRule? _rule;
+  int? _ayahNumber;
+
+  @override
+  void dispose() {
+    _word.dispose();
+    _description.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final segment = widget.segment;
+    final rule = _rule;
+
+    return AlertDialog(
+      title: const Text('إضافة خطأ'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DropdownButtonFormField<TajweedRule>(
+              initialValue: rule,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'قاعدة التجويد'),
+              items: [
+                for (final rule in widget.rules)
+                  DropdownMenuItem(
+                    value: rule,
+                    child: Text(rule.name, overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+              onChanged: (rule) => setState(() => _rule = rule),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<int?>(
+              initialValue: _ayahNumber,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'الآية (اختياري)'),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('غير محددة')),
+                for (
+                  var ayah = segment.ayahFrom;
+                  ayah <= segment.ayahTo;
+                  ayah++
+                )
+                  DropdownMenuItem(value: ayah, child: Text('الآية $ayah')),
+              ],
+              onChanged: (ayah) => setState(() => _ayahNumber = ayah),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _word,
+              maxLength: RecitationError.maxWordLength,
+              decoration: const InputDecoration(
+                labelText: 'الكلمة أو الموضع (اختياري)',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _description,
+              minLines: 2,
+              maxLines: 4,
+              maxLength: RecitationError.maxDescriptionLength,
+              decoration: const InputDecoration(labelText: 'وصف مختصر للخطأ'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('إلغاء'),
+        ),
+        TextButton(
+          onPressed: rule == null
+              ? null
+              : () => Navigator.of(context).pop<_ErrorDraft>((
+                  rule: rule,
+                  ayahNumber: _ayahNumber,
+                  word: _word.text,
+                  description: _description.text,
+                )),
+          child: const Text('إضافة'),
+        ),
+      ],
+    );
+  }
+}
+
 /// The recitation score entered by the supervisor, the scores derived from
-/// it, and the approval of the result.
+/// it, the general notes, the detailed Tajweed errors, and the approval of
+/// the result.
 class _EvaluationForm extends StatelessWidget {
   const _EvaluationForm({
     required this.exam,
+    required this.segment,
+    required this.rules,
     required this.courseName,
     required this.theoryScore,
     required this.onApproved,
   });
 
   final Exam exam;
+  final ExamSegment segment;
+
+  /// The Tajweed rules an error can be recorded against.
+  final List<TajweedRule> rules;
   final String courseName;
 
   /// Null when the theory score cannot be calculated.
@@ -414,7 +586,8 @@ class _EvaluationForm extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: const Text('اعتماد النتيجة'),
         content: const Text(
-          'لن تتمكن من تعديل الدرجة بعد الاعتماد. هل تريد المتابعة؟',
+          'لن تتمكن من تعديل الدرجة أو الملاحظات أو الأخطاء بعد الاعتماد. '
+          'هل تريد المتابعة؟',
         ),
         actions: [
           TextButton(
@@ -433,6 +606,22 @@ class _EvaluationForm extends StatelessWidget {
         exam: exam,
         courseName: courseName,
         theoryScore: theoryScore,
+      );
+    }
+  }
+
+  Future<void> _addError(BuildContext context) async {
+    final cubit = context.read<EvaluationCubit>();
+    final draft = await showDialog<_ErrorDraft>(
+      context: context,
+      builder: (context) => _ErrorDialog(rules: rules, segment: segment),
+    );
+    if (draft != null) {
+      cubit.recordError(
+        rule: draft.rule,
+        ayahNumber: draft.ayahNumber,
+        word: draft.word,
+        description: draft.description,
       );
     }
   }
@@ -530,6 +719,68 @@ class _EvaluationForm extends StatelessWidget {
                       lineHeight: 22.5,
                     ),
                   ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _Card(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _Label('ملاحظات عامة (اختياري)'),
+                  const SizedBox(height: 6),
+                  TextField(
+                    enabled: editing,
+                    minLines: 3,
+                    maxLines: 6,
+                    maxLength: EvaluationState.maxFeedbackLength,
+                    decoration: const InputDecoration(
+                      hintText: 'ملاحظاتك على تلاوة الطالب',
+                    ),
+                    onChanged: context.read<EvaluationCubit>().setFeedback,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _Card(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Label('أخطاء التجويد (${state.errors.length})'),
+                  const SizedBox(height: 6),
+                  if (state.errors.isEmpty)
+                    const _Value('لم تُضف أخطاء تفصيلية بعد.')
+                  else
+                    for (final (index, error) in state.errors.indexed) ...[
+                      if (index > 0)
+                        const Divider(height: 20, color: AppColors.lineSoft),
+                      _ErrorTile(
+                        error: error,
+                        onRemove: editing
+                            ? () => context.read<EvaluationCubit>().removeError(
+                                error.id,
+                              )
+                            : null,
+                      ),
+                    ],
+                  const SizedBox(height: 12),
+                  if (rules.isEmpty)
+                    const _Label(
+                      'قواعد التجويد غير متاحة حاليًا، لذا لا يمكن تسجيل أخطاء '
+                      'تفصيلية.',
+                    )
+                  else if (!state.canAddError)
+                    const _Label(
+                      'بلغت الحد الأقصى لعدد الأخطاء '
+                      '(${RecitationError.maxPerEvaluation}).',
+                    )
+                  else
+                    OutlinedButton.icon(
+                      onPressed: editing ? () => _addError(context) : null,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('إضافة خطأ'),
+                    ),
                 ],
               ),
             ),

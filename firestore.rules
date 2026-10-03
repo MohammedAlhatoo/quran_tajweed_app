@@ -307,10 +307,48 @@ service cloud.firestore {
         && existsAfter(/databases/$(database)/documents/evaluations/$(examId));
     }
 
+    // One Tajweed error of an evaluation: {id, ruleId, ruleName, ayahNumber,
+    // word, description, createdAt}. Only the reference to the rule is
+    // checked: a request may evaluate at most 1000 expressions, which the
+    // full check of four errors already reaches. Not enforced here: the other
+    // fields, that ruleId matches a tajweed_rules record, and that ayahNumber
+    // is inside the examination's segment. The app skips an error it cannot
+    // read.
+    function validDetailedError(error) {
+      return error.ruleId is string;
+    }
+
+    // At most twenty errors, the limit the app applies. Rules cannot loop, so
+    // each position is checked.
+    function validDetailedErrors(errors) {
+      return errors is list
+        && errors.size() <= 20
+        && (errors.size() < 1 || validDetailedError(errors[0]))
+        && (errors.size() < 2 || validDetailedError(errors[1]))
+        && (errors.size() < 3 || validDetailedError(errors[2]))
+        && (errors.size() < 4 || validDetailedError(errors[3]))
+        && (errors.size() < 5 || validDetailedError(errors[4]))
+        && (errors.size() < 6 || validDetailedError(errors[5]))
+        && (errors.size() < 7 || validDetailedError(errors[6]))
+        && (errors.size() < 8 || validDetailedError(errors[7]))
+        && (errors.size() < 9 || validDetailedError(errors[8]))
+        && (errors.size() < 10 || validDetailedError(errors[9]))
+        && (errors.size() < 11 || validDetailedError(errors[10]))
+        && (errors.size() < 12 || validDetailedError(errors[11]))
+        && (errors.size() < 13 || validDetailedError(errors[12]))
+        && (errors.size() < 14 || validDetailedError(errors[13]))
+        && (errors.size() < 15 || validDetailedError(errors[14]))
+        && (errors.size() < 16 || validDetailedError(errors[15]))
+        && (errors.size() < 17 || validDetailedError(errors[16]))
+        && (errors.size() < 18 || validDetailedError(errors[17]))
+        && (errors.size() < 19 || validDetailedError(errors[18]))
+        && (errors.size() < 20 || validDetailedError(errors[19]));
+    }
+
     // One evaluation per examination, with the examination's ID, created when
-    // the supervisor approves the result. It is never changed afterwards.
-    // Not enforced here: that theoryScore matches the student's answers and
-    // question_answers.
+    // the supervisor approves the result with the notes and the Tajweed
+    // errors. It is never changed afterwards. Not enforced here: that
+    // theoryScore matches the student's answers and question_answers.
     match /evaluations/{evaluationId} {
       allow get: if isSupervisorOf(examData(evaluationId).squareId);
 
@@ -325,13 +363,13 @@ service cloud.firestore {
         && awaitingReview(examData(evaluationId).status)
         && request.resource.data.keys().hasAll([
           'examId', 'supervisorId', 'recitationScore', 'theoryScore',
-          'finalScore', 'result', 'feedback', 'status', 'reviewedAt',
-          'approvedAt'
+          'finalScore', 'result', 'feedback', 'detailedErrors', 'status',
+          'reviewedAt', 'approvedAt'
         ])
         && request.resource.data.keys().hasOnly([
           'examId', 'supervisorId', 'recitationScore', 'theoryScore',
-          'finalScore', 'result', 'feedback', 'status', 'reviewedAt',
-          'approvedAt'
+          'finalScore', 'result', 'feedback', 'detailedErrors', 'status',
+          'reviewedAt', 'approvedAt'
         ])
         && request.resource.data.examId == evaluationId
         && request.resource.data.supervisorId == request.auth.uid
@@ -348,6 +386,7 @@ service cloud.firestore {
         && (request.resource.data.feedback == null
           || (request.resource.data.feedback is string
             && request.resource.data.feedback.size() <= 2000))
+        && validDetailedErrors(request.resource.data.detailedErrors)
         && request.resource.data.status == 'approved'
         && request.resource.data.reviewedAt == request.time
         && request.resource.data.approvedAt == request.time

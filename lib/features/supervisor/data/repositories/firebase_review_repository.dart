@@ -7,8 +7,10 @@ import '../../../../core/services/storage_service.dart';
 import '../../../../core/utils/app_failure.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../certificates/data/repositories/firestore_certificates_repository.dart';
+import '../../../courses/domain/entities/tajweed_rule.dart';
 import '../../../exams/domain/entities/exam.dart';
 import '../../../exams/domain/entities/exam_status.dart';
+import '../../../exams/domain/entities/recitation_error.dart';
 import '../../../exams/domain/entities/submission.dart';
 import '../../../notifications/data/repositories/firestore_notifications_repository.dart';
 import '../../../questions/domain/entities/exam_question.dart';
@@ -164,6 +166,23 @@ class FirebaseReviewRepository implements ReviewRepository {
     }
   }
 
+  @override
+  Future<List<TajweedRule>> fetchTajweedRules() async {
+    try {
+      final snapshot = await _firestore
+          .collection(FirebaseCollections.tajweedRules)
+          .get();
+      final rules = [
+        for (final doc in snapshot.docs)
+          ?TajweedRule.fromMap(doc.id, doc.data()),
+      ];
+      rules.sort((a, b) => a.name.compareTo(b.name));
+      return rules;
+    } on FirebaseException catch (e) {
+      throw AppFailure.fromFirebase(e);
+    }
+  }
+
   /// The documents created when the result of [exam] is approved, by path:
   /// the evaluation, the student's notification and, only when the result
   /// is passed, the certificate.
@@ -173,6 +192,8 @@ class FirebaseReviewRepository implements ReviewRepository {
     required String supervisorId,
     required int recitationScore,
     required int theoryScore,
+    String? feedback,
+    List<RecitationError> errors = const [],
   }) {
     final examId = exam.id;
     final finalScore = ExamScoring.finalScore(
@@ -202,7 +223,13 @@ class FirebaseReviewRepository implements ReviewRepository {
         'theoryScore': theoryScore,
         'finalScore': finalScore,
         'result': result,
-        'feedback': null,
+        'feedback': feedback,
+        // Kept inside the evaluation: the errors are written once with it and
+        // read with it. A server timestamp cannot be written inside a list,
+        // so each error carries the time it was recorded on the device.
+        'detailedErrors': [
+          for (final error in errors) error.toMap(fromDate: Timestamp.fromDate),
+        ],
         'status': 'approved',
         'reviewedAt': FieldValue.serverTimestamp(),
         'approvedAt': FieldValue.serverTimestamp(),
@@ -227,6 +254,8 @@ class FirebaseReviewRepository implements ReviewRepository {
     required String supervisorId,
     required int recitationScore,
     required int theoryScore,
+    required String? feedback,
+    required List<RecitationError> errors,
   }) async {
     // One batch: the result, its notification and its certificate exist only
     // together with the approved examination.
@@ -243,6 +272,8 @@ class FirebaseReviewRepository implements ReviewRepository {
       supervisorId: supervisorId,
       recitationScore: recitationScore,
       theoryScore: theoryScore,
+      feedback: feedback,
+      errors: errors,
     );
     for (final MapEntry(key: path, value: data) in documents.entries) {
       batch.set(_firestore.doc(path), data);

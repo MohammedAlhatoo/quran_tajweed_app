@@ -9,10 +9,12 @@ import '../../../../core/widgets/state_views.dart';
 import '../../../../router/route_names.dart';
 import '../../../questions/presentation/widgets/exam_action_button.dart';
 import '../../domain/entities/evaluation.dart';
+import '../../domain/entities/recitation_error.dart';
 import '../state/exam_result_cubit.dart';
 
 /// The result of one of the student's examinations: the two scores, the
-/// final score and whether it was passed, once the supervisor approves it.
+/// final score, whether it was passed, and the supervisor's notes and
+/// detailed Tajweed errors, once the supervisor approves it.
 class ExamResultPage extends StatelessWidget {
   const ExamResultPage({super.key});
 
@@ -141,6 +143,32 @@ class _ResultView extends StatelessWidget {
                   ),
                 ),
               ],
+              const SizedBox(height: 28),
+              const _SectionTitle('التقرير التفصيلي'),
+              if (evaluation.feedback case final feedback?) ...[
+                _ReportCard(
+                  children: [
+                    const _ReportLabel('الملاحظات العامة'),
+                    const SizedBox(height: 4),
+                    _ReportText(feedback),
+                  ],
+                ),
+                const SizedBox(height: 14),
+              ],
+              const _ReportLabel('تقرير الأخطاء'),
+              const SizedBox(height: 8),
+              if (evaluation.detailedErrors.isEmpty)
+                const _ReportCard(
+                  children: [
+                    _ReportText('لم يتم تسجيل أخطاء تفصيلية لهذا التقييم.'),
+                  ],
+                )
+              else
+                for (final (index, error)
+                    in evaluation.detailedErrors.indexed) ...[
+                  if (index > 0) const SizedBox(height: 12),
+                  _ErrorCard(number: index + 1, error: error),
+                ],
             ],
           ),
         ),
@@ -158,6 +186,124 @@ class _ResultView extends StatelessWidget {
               ),
             ),
           ),
+      ],
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Text(
+        text,
+        style: AppTextStyles.cairo(
+          size: 16,
+          weight: FontWeight.w700,
+          color: AppColors.title,
+          lineHeight: 24,
+        ),
+      ),
+    );
+  }
+}
+
+/// The bordered card of the scores, used for each part of the report.
+class _ReportCard extends StatelessWidget {
+  const _ReportCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.optionBorder),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+}
+
+class _ReportLabel extends StatelessWidget {
+  const _ReportLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: AppTextStyles.cairo(
+        size: 13,
+        weight: FontWeight.w600,
+        color: AppColors.muted,
+        lineHeight: 20,
+      ),
+    );
+  }
+}
+
+class _ReportText extends StatelessWidget {
+  const _ReportText(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: AppTextStyles.cairo(
+        size: 14,
+        weight: FontWeight.w500,
+        color: AppColors.bodyText,
+        lineHeight: 22,
+      ),
+    );
+  }
+}
+
+/// One Tajweed error of the report: its rule, its position and its
+/// description.
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({required this.number, required this.error});
+
+  final int number;
+  final RecitationError error;
+
+  @override
+  Widget build(BuildContext context) {
+    final position = error.position;
+
+    return _ReportCard(
+      children: [
+        _ReportLabel('الخطأ $number'),
+        const SizedBox(height: 4),
+        Text(
+          error.ruleName ?? 'قاعدة غير متاحة',
+          style: AppTextStyles.cairo(
+            size: 15,
+            weight: FontWeight.w700,
+            color: AppColors.title,
+            lineHeight: 24,
+          ),
+        ),
+        if (position != null) _ReportLabel(position),
+        if (error.description.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          _ReportText(error.description),
+        ],
       ],
     );
   }

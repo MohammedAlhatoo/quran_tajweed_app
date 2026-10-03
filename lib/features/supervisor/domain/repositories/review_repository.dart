@@ -1,5 +1,7 @@
 import '../../../auth/domain/entities/app_user.dart';
+import '../../../courses/domain/entities/tajweed_rule.dart';
 import '../../../exams/domain/entities/exam.dart';
+import '../../../exams/domain/entities/recitation_error.dart';
 import '../../../exams/domain/entities/submission.dart';
 import '../../../questions/domain/entities/exam_question.dart';
 
@@ -28,9 +30,13 @@ abstract interface class ReviewRepository {
   /// A question without a stored answer is absent from the result.
   Future<Map<String, String>> fetchCorrectAnswers(List<String> questionIds);
 
+  /// The Tajweed rules of `tajweed_rules`, ordered by name.
+  Future<List<TajweedRule>> fetchTajweedRules();
+
   /// Approves the result of [exam]: saves its evaluation and moves the
   /// examination to `approved`, together. The final score and the result are
-  /// derived from the two scores.
+  /// derived from the two scores. [feedback] is the supervisor's general
+  /// notes, and [errors] the Tajweed errors recorded in the recitation.
   ///
   /// The same write notifies the student of the result in [courseName], and
   /// issues the certificate when the result is `passed`.
@@ -40,6 +46,8 @@ abstract interface class ReviewRepository {
     required String supervisorId,
     required int recitationScore,
     required int theoryScore,
+    required String? feedback,
+    required List<RecitationError> errors,
   });
 
   /// Downloads the recitation of [examId] from the Storage path

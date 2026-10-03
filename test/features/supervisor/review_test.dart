@@ -4,8 +4,10 @@ import 'package:quran_tajweed_app/features/auth/domain/entities/app_user.dart';
 import 'package:quran_tajweed_app/features/auth/domain/entities/user_role.dart';
 import 'package:quran_tajweed_app/features/courses/domain/entities/course.dart';
 import 'package:quran_tajweed_app/features/courses/domain/entities/course_level.dart';
+import 'package:quran_tajweed_app/features/courses/domain/entities/tajweed_rule.dart';
 import 'package:quran_tajweed_app/features/courses/domain/repositories/courses_repository.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/exam.dart';
+import 'package:quran_tajweed_app/features/exams/domain/entities/recitation_error.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/exam_segment.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/exam_status.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/submission.dart';
@@ -64,6 +66,9 @@ const _segment = ExamSegment(
   ruleDensity: 1,
   isActive: true,
 );
+
+const _ikhfa = TajweedRule(id: 'rule-a', name: 'الإخفاء');
+const _qalqalah = TajweedRule(id: 'rule-b', name: 'القلقلة');
 
 final _questions = [
   for (var order = 1; order <= 10; order++)
@@ -155,6 +160,9 @@ class _FakeReviewRepository implements ReviewRepository {
     int theoryScore,
   })?
   approved;
+  String? approvedFeedback;
+  List<RecitationError> approvedErrors = const [];
+  AppFailure? rulesFailure;
   String? requestedSquareId;
   AppUser? student = _student;
   Submission? submission = _submission;
@@ -200,8 +208,12 @@ class _FakeReviewRepository implements ReviewRepository {
     required String supervisorId,
     required int recitationScore,
     required int theoryScore,
+    required String? feedback,
+    required List<RecitationError> errors,
   }) async {
     if (failure case final failure?) throw failure;
+    approvedFeedback = feedback;
+    approvedErrors = errors;
     approved = (
       examId: exam.id,
       courseName: courseName,
@@ -209,6 +221,12 @@ class _FakeReviewRepository implements ReviewRepository {
       recitationScore: recitationScore,
       theoryScore: theoryScore,
     );
+  }
+
+  @override
+  Future<List<TajweedRule>> fetchTajweedRules() async {
+    if (rulesFailure case final failure?) throw failure;
+    return const [_ikhfa, _qalqalah];
   }
 
   @override
@@ -376,6 +394,26 @@ void main() {
       expect(state.theoryScore, 14);
     });
 
+    test('load emits the Tajweed rules an error can be recorded on', () async {
+      final cubit = build();
+
+      await cubit.load();
+
+      final state = cubit.state as ExamReviewLoaded;
+      expect(state.rules.map((rule) => rule.id), ['rule-a', 'rule-b']);
+    });
+
+    test('stays reviewable when the Tajweed rules cannot be read', () async {
+      reviews.rulesFailure = const AppFailure('تعذّر الاتصال.');
+      final cubit = build();
+
+      await cubit.load();
+
+      final state = cubit.state as ExamReviewLoaded;
+      expect(state.rules, isEmpty);
+      expect(state.theoryScore, 14);
+    });
+
     test('load emits the failure message', () async {
       reviews.failure = const AppFailure('تعذّر الاتصال.');
       final cubit = build();
@@ -428,7 +466,105 @@ void main() {
       cubit = EvaluationCubit(
         repository: reviews,
         supervisorId: 'supervisor-1',
+        now: () => DateTime(2026, 10, 3),
       );
+    });
+
+    test('records several errors and removes one before approval', () {
+      cubit.recordError(
+        rule: _ikhfa,
+        ayahNumber: 3,
+        word: ' أنتم ',
+        description: ' لم تُخفَ النون ',
+      );
+      cubit.recordError(rule: _qalqalah, description: '');
+      cubit.recordError(rule: _ikhfa, description: 'خطأ ثالث');
+
+      expect(cubit.state.errors.map((error) => error.id).toSet(), hasLength(3));
+      final first = cubit.state.errors.first;
+      expect(first.ruleId, 'rule-a');
+      expect(first.ruleName, 'الإخفاء');
+      expect(first.ayahNumber, 3);
+      expect(first.word, 'أنتم');
+      expect(first.description, 'لم تُخفَ النون');
+      expect(first.createdAt, DateTime(2026, 10, 3));
+      expect(cubit.state.errors[1].ayahNumber, isNull);
+      expect(cubit.state.errors[1].word, isNull);
+
+      cubit.removeError(cubit.state.errors[1].id);
+
+      expect(cubit.state.errors.map((error) => error.ruleId), [
+        'rule-a',
+        'rule-a',
+      ]);
+      // A removed error's ID is not given to a later one.
+      cubit.recordError(rule: _qalqalah, description: '');
+      expect(cubit.state.errors.map((error) => error.id).toSet(), hasLength(3));
+    });
+
+    test('keeps the score, the notes and the errors apart', () {
+      cubit.setRecitationScore('64');
+      cubit.setFeedback('أحسنت');
+      cubit.recordError(rule: _ikhfa, description: '');
+      cubit.setRecitationScore('abc');
+
+      expect(cubit.state.recitationScore, isNull);
+      expect(cubit.state.feedback, 'أحسنت');
+      expect(cubit.state.errors, hasLength(1));
+    });
+
+    test('holds at most the errors the security rules accept', () {
+      for (var i = 0; i < RecitationError.maxPerEvaluation + 3; i++) {
+        cubit.recordError(rule: _ikhfa, description: '');
+      }
+
+      expect(cubit.state.errors, hasLength(RecitationError.maxPerEvaluation));
+      expect(cubit.state.canAddError, isFalse);
+    });
+
+    test('approve saves the notes and the errors with the scores', () async {
+      cubit.setRecitationScore('60');
+      cubit.setFeedback('  راجع أحكام النون الساكنة  ');
+      cubit.recordError(rule: _ikhfa, ayahNumber: 2, description: 'إظهار');
+
+      await cubit.approve(exam: _exam, courseName: 'تمهيدية', theoryScore: 14);
+
+      expect(cubit.state.status, EvaluationStatus.approved);
+      expect(reviews.approvedFeedback, 'راجع أحكام النون الساكنة');
+      expect(reviews.approvedErrors.single.ruleId, 'rule-a');
+      expect(reviews.approvedErrors.single.ayahNumber, 2);
+
+      // Nothing changes once the result is approved.
+      cubit.setFeedback('تعديل');
+      cubit.recordError(rule: _qalqalah, description: '');
+      cubit.removeError(cubit.state.errors.single.id);
+      expect(cubit.state.feedback, '  راجع أحكام النون الساكنة  ');
+      expect(cubit.state.errors, hasLength(1));
+    });
+
+    test('approve saves no notes when none were written', () async {
+      cubit.setRecitationScore('60');
+      cubit.setFeedback('   ');
+
+      await cubit.approve(exam: _exam, courseName: 'تمهيدية', theoryScore: 14);
+
+      expect(reviews.approved, isNotNull);
+      expect(reviews.approvedFeedback, isNull);
+      expect(reviews.approvedErrors, isEmpty);
+    });
+
+    test('a failed approval keeps the notes and the errors', () async {
+      cubit.setRecitationScore('60');
+      cubit.setFeedback('ملاحظة');
+      cubit.recordError(rule: _ikhfa, description: '');
+      reviews.failure = const AppFailure('تعذّر الاتصال.');
+
+      await cubit.approve(exam: _exam, courseName: 'تمهيدية', theoryScore: 14);
+
+      expect(cubit.state.status, EvaluationStatus.editing);
+      expect(cubit.state.errorMessage, 'تعذّر الاتصال.');
+      expect(cubit.state.feedback, 'ملاحظة');
+      expect(cubit.state.errors, hasLength(1));
     });
 
     test('accepts only a whole recitation score from 0 to 80', () {

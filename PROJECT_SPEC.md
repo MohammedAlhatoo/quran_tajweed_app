@@ -969,10 +969,27 @@ theoryScore
 finalScore
 result
 feedback
+detailedErrors
 status
 reviewedAt
 approvedAt
 ```
+
+`feedback` holds the supervisor's general notes (up to 2000 characters), or `null`.
+
+`detailedErrors` is the list of Tajweed errors the supervisor recorded in the recitation, at most 20, written once with the evaluation and never changed. Each error is:
+
+```text
+id
+ruleId        (references tajweed_rules)
+ruleName      (the rule's name when the error was recorded, or null)
+ayahNumber    (an ayah of the examination's segment, or null)
+word          (the word or position, or null)
+description
+createdAt
+```
+
+Fields such as the marks an error cost or its position inside the recording may be added to an error later. An evaluation saved before this list existed has no `detailedErrors`; it is read as an empty list.
 
 `status` expresses the review and approval state of the evaluation:
 

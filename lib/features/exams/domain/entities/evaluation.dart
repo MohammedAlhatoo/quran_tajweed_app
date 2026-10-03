@@ -1,3 +1,5 @@
+import 'recitation_error.dart';
+
 /// The approved evaluation of one examination, from the `evaluations`
 /// collection. Its ID is the examination's ID.
 class Evaluation {
@@ -9,6 +11,8 @@ class Evaluation {
     required this.result,
     this.supervisorId,
     this.approvedAt,
+    this.feedback,
+    this.detailedErrors = const [],
   });
 
   /// The values of the `result` field.
@@ -30,6 +34,13 @@ class Evaluation {
   final String? supervisorId;
   final DateTime? approvedAt;
 
+  /// The supervisor's general notes, or null when there are none.
+  final String? feedback;
+
+  /// The Tajweed errors the supervisor recorded, in the order they were
+  /// added. Empty for an evaluation saved without them.
+  final List<RecitationError> detailedErrors;
+
   bool get passed => result == passedResult;
 
   /// Returns null when a score or the result is missing. [toDate] converts a
@@ -49,6 +60,8 @@ class Evaluation {
         result is! String) {
       return null;
     }
+    final feedback = data['feedback'];
+    final detailedErrors = data['detailedErrors'];
     return Evaluation(
       examId: id,
       recitationScore: recitationScore,
@@ -57,6 +70,14 @@ class Evaluation {
       result: result,
       supervisorId: data['supervisorId'] as String?,
       approvedAt: toDate(data['approvedAt']),
+      feedback: feedback is String && feedback.trim().isNotEmpty
+          ? feedback
+          : null,
+      detailedErrors: [
+        if (detailedErrors is List)
+          for (final error in detailedErrors)
+            ?RecitationError.fromMap(error, toDate: toDate),
+      ],
     );
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/utils/app_failure.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../courses/domain/entities/course.dart';
+import '../../../courses/domain/entities/tajweed_rule.dart';
 import '../../../courses/domain/repositories/courses_repository.dart';
 import '../../../exams/domain/entities/exam.dart';
 import '../../../exams/domain/entities/exam_segment.dart';
@@ -29,6 +30,7 @@ class ExamReviewLoaded extends ExamReviewState {
     required this.submission,
     required this.questions,
     required this.correctAnswers,
+    this.rules = const [],
   });
 
   final Exam exam;
@@ -46,6 +48,10 @@ class ExamReviewLoaded extends ExamReviewState {
   /// The correct answer of each question, keyed by the ID of its source
   /// question.
   final Map<String, String> correctAnswers;
+
+  /// The Tajweed rules an error can be recorded against. Empty when they
+  /// cannot be read or none are stored.
+  final List<TajweedRule> rules;
 
   /// The theory score out of 20, or null when it cannot be calculated
   /// because the questions or their correct answers are missing.
@@ -121,10 +127,21 @@ class ExamReviewCubit extends Cubit<ExamReviewState> {
           correctAnswers: await _reviews.fetchCorrectAnswers([
             for (final question in questions) question.questionId,
           ]),
+          rules: await _fetchRules(),
         ),
       );
     } on AppFailure catch (failure) {
       emit(ExamReviewError(failure.message));
+    }
+  }
+
+  /// The result can be approved without detailed errors, so the review does
+  /// not depend on the rules.
+  Future<List<TajweedRule>> _fetchRules() async {
+    try {
+      return await _reviews.fetchTajweedRules();
+    } on AppFailure {
+      return const [];
     }
   }
 

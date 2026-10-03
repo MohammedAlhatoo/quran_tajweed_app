@@ -1,6 +1,8 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/exam.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/exam_status.dart';
+import 'package:quran_tajweed_app/features/exams/domain/entities/recitation_error.dart';
 import 'package:quran_tajweed_app/features/notifications/data/repositories/firestore_notifications_repository.dart';
 import 'package:quran_tajweed_app/features/supervisor/data/repositories/firebase_review_repository.dart';
 
@@ -54,6 +56,74 @@ void main() {
         documents['notifications/exam-1_result']!['body'],
         contains('راسب'),
       );
+    });
+
+    test('the evaluation holds the notes and the detailed errors', () {
+      final recordedAt = DateTime(2026, 10, 3, 9);
+      final documents = FirebaseReviewRepository.approvalDocuments(
+        exam: _exam,
+        courseName: 'تمهيدية',
+        supervisorId: 'sup-1',
+        recitationScore: 60,
+        theoryScore: 18,
+        feedback: 'راجع أحكام النون الساكنة',
+        errors: [
+          RecitationError(
+            id: 'error-1',
+            ruleId: 'rule-a',
+            ruleName: 'الإخفاء',
+            ayahNumber: 3,
+            word: 'أنتم',
+            description: 'لم تُخفَ النون',
+            createdAt: recordedAt,
+          ),
+          RecitationError(
+            id: 'error-2',
+            ruleId: 'rule-b',
+            description: '',
+            createdAt: recordedAt,
+          ),
+        ],
+      );
+
+      final evaluation = documents['evaluations/exam-1']!;
+      expect(evaluation['supervisorId'], 'sup-1');
+      expect(evaluation['recitationScore'], 60);
+      expect(evaluation['theoryScore'], 18);
+      expect(evaluation['finalScore'], 78);
+      expect(evaluation['result'], 'passed');
+      expect(evaluation['status'], 'approved');
+      expect(evaluation['feedback'], 'راجع أحكام النون الساكنة');
+      expect(evaluation['detailedErrors'], [
+        {
+          'id': 'error-1',
+          'ruleId': 'rule-a',
+          'ruleName': 'الإخفاء',
+          'ayahNumber': 3,
+          'word': 'أنتم',
+          'description': 'لم تُخفَ النون',
+          'createdAt': Timestamp.fromDate(recordedAt),
+        },
+        {
+          'id': 'error-2',
+          'ruleId': 'rule-b',
+          'ruleName': null,
+          'ayahNumber': null,
+          'word': null,
+          'description': '',
+          'createdAt': Timestamp.fromDate(recordedAt),
+        },
+      ]);
+      // The certificate and the notification are issued as before.
+      expect(documents.keys, contains('certificates/exam-1'));
+      expect(documents.keys, contains('notifications/exam-1_result'));
+    });
+
+    test('an evaluation without notes or errors stores an empty list', () {
+      final evaluation = _approve(60)['evaluations/exam-1']!;
+
+      expect(evaluation['feedback'], isNull);
+      expect(evaluation['detailedErrors'], isEmpty);
     });
 
     test('the pass mark itself earns the certificate', () {

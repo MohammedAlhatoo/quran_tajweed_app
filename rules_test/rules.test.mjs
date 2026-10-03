@@ -103,6 +103,22 @@ function submission(examId, studentId) {
   };
 }
 
+function detailedError(id, change = {}) {
+  return {
+    id,
+    ruleId: 'rule1',
+    ruleName: 'الإخفاء',
+    ayahNumber: 3,
+    word: 'أنتم',
+    description: 'لم تُخفَ النون',
+    createdAt: seededAt,
+    ...change,
+  };
+}
+
+const detailedErrors = (count) =>
+  Array.from({ length: count }, (_, i) => detailedError(`error-${i + 1}`));
+
 function evaluation(examId, supervisorId) {
   return {
     examId,
@@ -111,7 +127,8 @@ function evaluation(examId, supervisorId) {
     theoryScore: 18,
     finalScore: 88,
     result: 'passed',
-    feedback: null,
+    feedback: 'راجع أحكام النون الساكنة',
+    detailedErrors: detailedErrors(1),
     status: 'approved',
     reviewedAt: seededAt,
     approvedAt: seededAt,
@@ -376,6 +393,19 @@ describe('denied: student', () => {
     );
     await assertFails(updateDoc(doc(db('stu1'), 'evaluations/eA'), { finalScore: 100 }));
     await assertFails(updateDoc(doc(db('stu1'), 'certificates/eA'), { finalScore: 100 }));
+  });
+
+  test('changes the notes, the errors or the result of an evaluation', async () => {
+    const own = doc(db('stu1'), 'evaluations/eA');
+    await assertFails(updateDoc(own, { feedback: 'ممتاز' }));
+    await assertFails(updateDoc(own, { feedback: null }));
+    await assertFails(updateDoc(own, { detailedErrors: [] }));
+    await assertFails(
+      updateDoc(own, { detailedErrors: [detailedError('error-1', { description: '' })] }),
+    );
+    await assertFails(updateDoc(own, { recitationScore: 80 }));
+    await assertFails(updateDoc(own, { result: 'passed', status: 'approved' }));
+    await assertFails(deleteDoc(own));
   });
 
   test('starts an examination in another square', async () => {
@@ -1091,7 +1121,7 @@ function submitBatch(uid, examId, squareId = 's1') {
   return batch;
 }
 
-function approveBatch(uid, examId, studentId, scores, withCertificate) {
+function approveBatch(uid, examId, studentId, scores, withCertificate, report = {}) {
   const firestore = db(uid);
   const finalScore = scores.recitation + scores.theory;
   const batch = writeBatch(firestore);
@@ -1106,9 +1136,11 @@ function approveBatch(uid, examId, studentId, scores, withCertificate) {
     finalScore,
     result: finalScore >= 70 ? 'passed' : 'failed',
     feedback: null,
+    detailedErrors: [],
     status: 'approved',
     reviewedAt: now(),
     approvedAt: now(),
+    ...report,
   });
   batch.set(doc(firestore, `notifications/${examId}_result`), {
     ...notification({ userId: studentId }), relatedId: examId, createdAt: now(),
@@ -1207,6 +1239,109 @@ describe('batches: approval', () => {
     await assertFails(
       approveBatch('sup1', 'e1', 'stu1', { recitation: 70, theory: 21 }, true).commit(),
     );
+  });
+
+  const approveWith = (report, uid = 'sup1') =>
+    approveBatch(uid, 'e1', 'stu1', passed, true, report).commit();
+
+  test('supervisor approves with notes and detailed errors, and the student reads them', async () => {
+    await assertSucceeds(
+      approveWith({
+        feedback: 'راجع أحكام النون الساكنة',
+        detailedErrors: [
+          detailedError('error-1'),
+          detailedError('error-2', { ruleName: null, ayahNumber: null, word: null, description: '' }),
+        ],
+      }),
+    );
+
+    const saved = await assertSucceeds(read(db('stu1'), 'evaluations/e1'));
+    assert.equal(saved.data().feedback, 'راجع أحكام النون الساكنة');
+    assert.equal(saved.data().detailedErrors.length, 2);
+    assert.equal(saved.data().detailedErrors[0].ruleId, 'rule1');
+    assert.equal(saved.data().detailedErrors[0].ayahNumber, 3);
+    assert.equal(saved.data().detailedErrors[1].word, null);
+
+    await assertSucceeds(read(db('sup1'), 'evaluations/e1'));
+    await assertSucceeds(read(db('officer1'), 'evaluations/e1'));
+    await assertSucceeds(read(db('admin'), 'evaluations/e1'));
+    await assertFails(read(db('stu1x'), 'evaluations/e1'));
+    await assertFails(read(db('sup1b'), 'evaluations/e1'));
+    await assertFails(read(db('officer2'), 'evaluations/e1'));
+  });
+
+  test('twenty detailed errors are accepted, twenty-one refused', async () => {
+    const full = (id) =>
+      detailedError(id, {
+        ruleName: 'ق'.repeat(200),
+        word: 'ك'.repeat(60),
+        description: 'و'.repeat(300),
+        ayahNumber: 286,
+      });
+    await assertFails(
+      approveWith({ detailedErrors: Array.from({ length: 21 }, (_, i) => full(`error-${i}`)) }),
+    );
+    await assertSucceeds(
+      approveWith({ detailedErrors: Array.from({ length: 20 }, (_, i) => full(`error-${i}`)) }),
+    );
+  });
+
+  test('detailed errors that are not a list of errors with a rule are refused', async () => {
+    const withError = (change) => approveWith({ detailedErrors: [detailedError('error-1', change)] });
+    const { ruleId, ...withoutRule } = detailedError('error-1');
+
+    await assertFails(approveWith({ detailedErrors: null }));
+    await assertFails(approveWith({ detailedErrors: 'خطأ' }));
+    await assertFails(approveWith({ detailedErrors: { 0: detailedError('error-1') } }));
+    await assertFails(approveWith({ detailedErrors: ['خطأ'] }));
+    await assertFails(approveWith({ detailedErrors: [withoutRule] }));
+    await assertFails(withError({ ruleId: null }));
+    await assertFails(withError({ ruleId: 7 }));
+    // An error without a rule after well-formed ones is still caught.
+    await assertFails(
+      approveWith({ detailedErrors: [...detailedErrors(19), detailedError('error-20', { ruleId: 7 })] }),
+    );
+  });
+
+  test('evaluation without the detailedErrors field is refused', async () => {
+    const firestore = db('sup1');
+    const batch = writeBatch(firestore);
+    batch.update(doc(firestore, 'exams/e1'), {
+      status: 'approved', reviewedAt: now(), approvedAt: now(), updatedAt: now(),
+    });
+    const { detailedErrors: _, ...withoutErrors } = evaluation('e1', 'sup1');
+    batch.set(doc(firestore, 'evaluations/e1'), {
+      ...withoutErrors, reviewedAt: now(), approvedAt: now(),
+    });
+    batch.set(doc(firestore, 'notifications/e1_result'), {
+      ...notification({ userId: 'stu1' }), relatedId: 'e1', createdAt: now(),
+    });
+    await assertFails(batch.commit());
+  });
+
+  test('notes longer than the limit are refused', async () => {
+    await assertFails(approveWith({ feedback: 'م'.repeat(2001) }));
+    await assertSucceeds(approveWith({ feedback: 'م'.repeat(2000) }));
+  });
+
+  test('detailed errors do not let another square, an officer or a student approve', async () => {
+    const report = { feedback: 'ملاحظة', detailedErrors: detailedErrors(2) };
+    await assertFails(approveWith(report, 'sup1b'));
+    await assertFails(approveWith(report, 'sup2'));
+    await assertFails(approveWith(report, 'supInactive'));
+    await assertFails(approveWith(report, 'officer1'));
+    await assertFails(approveWith(report, 'admin'));
+    await assertFails(approveWith(report, 'stu1'));
+  });
+
+  test('an approved evaluation is never changed, even by its supervisor', async () => {
+    const saved = doc(db('sup1'), 'evaluations/eA');
+    await assertFails(updateDoc(saved, { feedback: 'تعديل' }));
+    await assertFails(updateDoc(saved, { detailedErrors: [] }));
+    await assertFails(updateDoc(saved, { recitationScore: 80, finalScore: 98 }));
+    await assertFails(deleteDoc(saved));
+    await assertFails(updateDoc(doc(db('officer1'), 'evaluations/eA'), { feedback: 'تعديل' }));
+    await assertFails(updateDoc(doc(db('admin'), 'evaluations/eA'), { detailedErrors: [] }));
   });
 
   test('evaluation alone, without approving the examination, is refused', async () => {

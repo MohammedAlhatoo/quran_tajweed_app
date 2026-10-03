@@ -2,9 +2,11 @@ import 'package:flutter_test/flutter_test.dart' hide Evaluation;
 import 'package:quran_tajweed_app/core/utils/app_failure.dart';
 import 'package:quran_tajweed_app/features/auth/domain/entities/app_user.dart';
 import 'package:quran_tajweed_app/features/auth/domain/entities/user_role.dart';
+import 'package:quran_tajweed_app/features/courses/domain/entities/tajweed_rule.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/evaluation.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/exam.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/exam_status.dart';
+import 'package:quran_tajweed_app/features/exams/domain/entities/recitation_error.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/submission.dart';
 import 'package:quran_tajweed_app/features/exams/domain/repositories/evaluations_repository.dart';
 import 'package:quran_tajweed_app/features/questions/domain/entities/exam_question.dart';
@@ -72,7 +74,12 @@ class _FakeReviewRepository implements ReviewRepository {
     required String supervisorId,
     required int recitationScore,
     required int theoryScore,
+    required String? feedback,
+    required List<RecitationError> errors,
   }) async {}
+
+  @override
+  Future<List<TajweedRule>> fetchTajweedRules() async => const [];
 
   @override
   Future<String> downloadRecording({
