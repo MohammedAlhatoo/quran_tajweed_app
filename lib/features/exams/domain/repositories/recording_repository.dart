@@ -5,10 +5,12 @@ String recitationRecordingPath(String examId) =>
 /// All methods throw `AppFailure` on error.
 abstract interface class RecordingRepository {
   /// Uploads the recitation recording of [examId] from the local [filePath],
-  /// replacing a previously uploaded one.
+  /// replacing a previously uploaded one. [onProgress] receives the uploaded
+  /// share, from 0 to 1.
   Future<void> uploadRecording({
     required String examId,
     required String filePath,
+    void Function(double progress)? onProgress,
   });
 
   /// Whether a recitation recording of [examId] has been uploaded.

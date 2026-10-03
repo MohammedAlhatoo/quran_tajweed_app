@@ -45,9 +45,22 @@ class RecordingControls extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _StatusRow(state),
+                  if (_caption(state) case final caption?) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      caption,
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.cairo(
+                        size: 12,
+                        weight: FontWeight.w600,
+                        color: AppColors.muted,
+                        lineHeight: 18,
+                      ),
+                    ),
+                  ],
                   if (!uploaded) ...[
                     const SizedBox(height: 12),
-                    _MainButton(state.status),
+                    _MainButton(state),
                   ],
                 ],
               ),
@@ -56,6 +69,21 @@ class RecordingControls extends StatelessWidget {
         );
       },
     );
+  }
+
+  /// What the student is told about the current recording.
+  static String? _caption(RecordingState state) {
+    return switch (state.status) {
+      RecordingStatus.idle => null,
+      RecordingStatus.recording => 'جارٍ تسجيل التلاوة...',
+      RecordingStatus.recorded when state.hasUploaded =>
+        'تسجيل جديد لم يُرفع بعد. ارفعه ليستبدل التسجيل المرفوع سابقًا.',
+      RecordingStatus.recorded => 'التسجيل جاهز. استمع إليه ثم ارفعه.',
+      RecordingStatus.playing => 'جارٍ تشغيل التسجيل...',
+      RecordingStatus.uploading =>
+        'جارٍ رفع التسجيل... ${(state.uploadProgress * 100).round()}%',
+      RecordingStatus.uploaded => null,
+    };
   }
 }
 
@@ -70,7 +98,9 @@ class _StatusRow extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('إعادة التسجيل'),
-        content: const Text('سيُستبدل التسجيل الحالي بتسجيل جديد. هل تريد المتابعة؟'),
+        content: const Text(
+          'سيُستبدل التسجيل الحالي بتسجيل جديد. هل تريد المتابعة؟',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -107,7 +137,7 @@ class _StatusRow extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'تم رفع التسجيل',
+                  'تم رفع التسجيل بنجاح',
                   style: AppTextStyles.cairo(
                     size: 13,
                     weight: FontWeight.w700,
@@ -246,46 +276,53 @@ class _SideButton extends StatelessWidget {
   }
 }
 
-/// The round action button: record, stop, or send the recording.
+/// The round action button: record, stop, or upload the recording. It never
+/// submits the examination.
 class _MainButton extends StatelessWidget {
-  const _MainButton(this.status);
+  const _MainButton(this.state);
 
-  final RecordingStatus status;
+  final RecordingState state;
 
   static const double _size = 56;
 
   @override
   Widget build(BuildContext context) {
     final cubit = context.read<RecordingCubit>();
-    final (String label, VoidCallback? onPressed, Widget child) =
-        switch (status) {
-          RecordingStatus.recording => (
-            'إيقاف التسجيل',
-            cubit.stop,
-            const Icon(Icons.stop_rounded, size: 28, color: AppColors.onPrimary),
+    final status = state.status;
+    final (
+      String label,
+      VoidCallback? onPressed,
+      Widget child,
+    ) = switch (status) {
+      RecordingStatus.recording => (
+        'إيقاف التسجيل',
+        cubit.stop,
+        const Icon(Icons.stop_rounded, size: 28, color: AppColors.onPrimary),
+      ),
+      RecordingStatus.recorded || RecordingStatus.playing => (
+        'رفع التلاوة',
+        status == RecordingStatus.recorded ? cubit.upload : null,
+        const _UploadLabel(),
+      ),
+      RecordingStatus.uploading => (
+        'جارٍ رفع التسجيل',
+        null,
+        SizedBox.square(
+          dimension: 24,
+          child: CircularProgressIndicator(
+            // Spins until the first progress report arrives.
+            value: state.uploadProgress > 0 ? state.uploadProgress : null,
+            strokeWidth: 2.5,
+            color: AppColors.onPrimary,
           ),
-          RecordingStatus.recorded || RecordingStatus.playing => (
-            'إرسال التسجيل',
-            status == RecordingStatus.recorded ? cubit.upload : null,
-            const _SendLabel(),
-          ),
-          RecordingStatus.uploading => (
-            'جارٍ رفع التسجيل',
-            null,
-            const SizedBox.square(
-              dimension: 24,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: AppColors.onPrimary,
-              ),
-            ),
-          ),
-          _ => (
-            'بدء التسجيل الصوتي للاختبار',
-            cubit.start,
-            SvgPicture.asset(AppAssets.micIcon, width: 28, height: 28),
-          ),
-        };
+        ),
+      ),
+      _ => (
+        'بدء التسجيل الصوتي للاختبار',
+        cubit.start,
+        SvgPicture.asset(AppAssets.micIcon, width: 28, height: 28),
+      ),
+    };
 
     return Semantics(
       button: true,
@@ -333,8 +370,8 @@ class _MainButton extends StatelessWidget {
   }
 }
 
-class _SendLabel extends StatelessWidget {
-  const _SendLabel();
+class _UploadLabel extends StatelessWidget {
+  const _UploadLabel();
 
   @override
   Widget build(BuildContext context) {
@@ -344,7 +381,7 @@ class _SendLabel extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'إرسال التسجيل',
+            'رفع التلاوة',
             style: AppTextStyles.button.copyWith(color: AppColors.onPrimary),
           ),
           const SizedBox(width: 8),

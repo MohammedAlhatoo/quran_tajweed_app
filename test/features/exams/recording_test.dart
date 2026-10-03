@@ -10,14 +10,22 @@ class _FakeRecordingRepository implements RecordingRepository {
   AppFailure? failure;
   bool uploaded = false;
   String? uploadedPath;
+  int uploads = 0;
+
+  /// Reported to the caller before the upload completes.
+  List<double> progress = const [];
 
   @override
   Future<void> uploadRecording({
     required String examId,
     required String filePath,
+    void Function(double progress)? onProgress,
   }) async {
     if (failure case final failure?) throw failure;
+    progress.forEach(onProgress ?? (_) {});
     uploadedPath = filePath;
+    uploads++;
+    uploaded = true;
   }
 
   @override
@@ -31,12 +39,16 @@ class _FakeRecorder implements RecitationRecorder {
   bool permission = true;
   String? path = 'recitation.m4a';
   int starts = 0;
+  AppFailure? startFailure;
 
   @override
   Future<bool> hasPermission() async => permission;
 
   @override
-  Future<void> start() async => starts++;
+  Future<void> start() async {
+    if (startFailure case final failure?) throw failure;
+    starts++;
+  }
 
   @override
   Future<String?> stop() async => path;
@@ -47,9 +59,13 @@ class _FakeRecorder implements RecitationRecorder {
 
 class _FakePlayer implements RecitationPlayer {
   Completer<void>? _playback;
+  final List<String> played = [];
 
   @override
-  Future<void> play(String filePath) => (_playback = Completer<void>()).future;
+  Future<void> play(String filePath) {
+    played.add(filePath);
+    return (_playback = Completer<void>()).future;
+  }
 
   @override
   Future<void> stop() async => _playback?.complete();
@@ -172,5 +188,130 @@ void main() {
 
     expect(cubit.state.status, RecordingStatus.idle);
     expect(repository.uploadedPath, isNull);
+  });
+
+  test('stop does not upload the recording', () async {
+    await record();
+
+    expect(cubit.state.status, RecordingStatus.recorded);
+    expect(cubit.state.hasUploaded, isFalse);
+    expect(repository.uploads, 0);
+  });
+
+  test('listening plays the recording kept on the device', () async {
+    await record();
+
+    final playing = cubit.play();
+    await cubit.stopPlayback();
+    await playing;
+
+    expect(player.played, ['recitation.m4a']);
+    expect(repository.uploads, 0);
+  });
+
+  test('listening is not available before a recording exists', () async {
+    await cubit.play();
+
+    expect(player.played, isEmpty);
+    expect(cubit.state.status, RecordingStatus.idle);
+  });
+
+  test('re-recording replaces the local recording without uploading', () async {
+    await record();
+    recorder.path = 'second.m4a';
+
+    await record();
+
+    expect(recorder.starts, 2);
+    expect(cubit.state.status, RecordingStatus.recorded);
+    expect(repository.uploads, 0);
+
+    final playing = cubit.play();
+    await cubit.stopPlayback();
+    await playing;
+    expect(player.played, ['second.m4a']);
+  });
+
+  test('upload happens only when it is requested', () async {
+    await record();
+    final playing = cubit.play();
+    await cubit.stopPlayback();
+    await playing;
+    expect(repository.uploads, 0);
+
+    await cubit.upload();
+
+    expect(repository.uploads, 1);
+    expect(cubit.state.status, RecordingStatus.uploaded);
+    expect(cubit.state.hasUploaded, isTrue);
+  });
+
+  test('upload reports its progress', () async {
+    repository.progress = [0.25, 0.5, 1];
+    await record();
+    final progress = <double>[];
+    final subscription = cubit.stream
+        .where((state) => state.status == RecordingStatus.uploading)
+        .listen((state) => progress.add(state.uploadProgress));
+
+    await cubit.upload();
+    // Lets the stream deliver the states emitted during the upload.
+    await Future<void>.delayed(Duration.zero);
+    await subscription.cancel();
+
+    expect(progress, [0, 0.25, 0.5, 1]);
+    expect(cubit.state.status, RecordingStatus.uploaded);
+  });
+
+  test('an uploaded recording is replaced by a new upload', () async {
+    await record();
+    await cubit.upload();
+    recorder.path = 'second.m4a';
+
+    // Re-recording alone leaves the uploaded recording in place.
+    await record();
+    expect(cubit.state.status, RecordingStatus.recorded);
+    expect(cubit.state.hasUploaded, isTrue);
+    expect(repository.uploads, 1);
+    expect(repository.uploadedPath, 'recitation.m4a');
+
+    await cubit.upload();
+    expect(cubit.state.status, RecordingStatus.uploaded);
+    expect(repository.uploads, 2);
+    expect(repository.uploadedPath, 'second.m4a');
+  });
+
+  test('a recording uploaded in an earlier visit can be replaced', () async {
+    repository.uploaded = true;
+    await cubit.load();
+
+    await record();
+    expect(repository.uploads, 0);
+
+    await cubit.upload();
+    expect(repository.uploads, 1);
+    expect(cubit.state.status, RecordingStatus.uploaded);
+  });
+
+  test('a failed re-recording keeps the uploaded recording', () async {
+    await record();
+    await cubit.upload();
+    recorder.path = null;
+
+    await record();
+
+    expect(cubit.state.status, RecordingStatus.uploaded);
+    expect(cubit.state.hasUploaded, isTrue);
+    expect(cubit.state.errorMessage, isNotNull);
+  });
+
+  test('a failed start keeps the current recording', () async {
+    await record();
+    recorder.startFailure = const AppFailure('تعذّر بدء التسجيل.');
+
+    await cubit.start();
+
+    expect(cubit.state.status, RecordingStatus.recorded);
+    expect(cubit.state.errorMessage, 'تعذّر بدء التسجيل.');
   });
 }

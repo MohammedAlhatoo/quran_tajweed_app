@@ -17,12 +17,14 @@ class FirebaseRecordingRepository implements RecordingRepository {
   Future<void> uploadRecording({
     required String examId,
     required String filePath,
+    void Function(double progress)? onProgress,
   }) async {
     try {
       await _storage.uploadFile(
         path: recitationRecordingPath(examId),
         file: File(filePath),
         contentType: 'audio/mp4',
+        onProgress: onProgress,
       );
     } on FirebaseException catch (e) {
       throw AppFailure.fromFirebase(e);

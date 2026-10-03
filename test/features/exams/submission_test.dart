@@ -44,12 +44,14 @@ class _FakeSubmissionRepository implements SubmissionRepository {
 class _FakeRecordingRepository implements RecordingRepository {
   AppFailure? failure;
   bool uploaded = true;
+  int uploads = 0;
 
   @override
   Future<void> uploadRecording({
     required String examId,
     required String filePath,
-  }) async {}
+    void Function(double progress)? onProgress,
+  }) async => uploads++;
 
   @override
   Future<bool> hasRecording(String examId) async {
@@ -162,6 +164,31 @@ void main() {
         expect(submissions.answers, isNull);
       },
     );
+
+    test('submit does not succeed without an uploaded recording', () async {
+      recordings.uploaded = false;
+      await cubit.load();
+
+      await cubit.submit(questions: _questions, chosen: _chosen);
+
+      expect(cubit.state.status, SubmissionStatus.ready);
+      expect(cubit.state.hasRecording, isFalse);
+      expect(
+        cubit.state.errorMessage,
+        'ارفع تسجيل التلاوة قبل إرسال الاختبار.',
+      );
+      expect(submissions.examId, isNull);
+      expect(recordings.uploads, 0);
+    });
+
+    test('submit never uploads the recording', () async {
+      await cubit.load();
+
+      await cubit.submit(questions: _questions, chosen: _chosen);
+
+      expect(cubit.state.status, SubmissionStatus.submitted);
+      expect(recordings.uploads, 0);
+    });
 
     test('a failed submit can be retried', () async {
       await cubit.load();

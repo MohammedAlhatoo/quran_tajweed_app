@@ -15,6 +15,8 @@ enum RecordingStatus {
   recorded,
   playing,
   uploading,
+
+  /// The current recording is the one in Storage.
   uploaded,
 }
 
@@ -22,6 +24,8 @@ class RecordingState {
   const RecordingState({
     this.status = RecordingStatus.idle,
     this.elapsed = Duration.zero,
+    this.hasUploaded = false,
+    this.uploadProgress = 0,
     this.errorMessage,
   });
 
@@ -30,17 +34,28 @@ class RecordingState {
   /// The length of the current recording.
   final Duration elapsed;
 
+  /// Whether Storage holds a recording of the examination. It stays true
+  /// while a newer recording waits on the device to replace it.
+  final bool hasUploaded;
+
+  /// The uploaded share of the recording, from 0 to 1, while uploading.
+  final double uploadProgress;
+
   /// Set only on the state emitted by a failed action.
   final String? errorMessage;
 
   RecordingState copyWith({
     RecordingStatus? status,
     Duration? elapsed,
+    bool? hasUploaded,
+    double? uploadProgress,
     String? errorMessage,
   }) {
     return RecordingState(
       status: status ?? this.status,
       elapsed: elapsed ?? this.elapsed,
+      hasUploaded: hasUploaded ?? this.hasUploaded,
+      uploadProgress: uploadProgress ?? this.uploadProgress,
       errorMessage: errorMessage,
     );
   }
@@ -69,14 +84,20 @@ class RecordingCubit extends Cubit<RecordingState> {
     try {
       final uploaded = await _repository.hasRecording(_examId);
       if (uploaded && !isClosed && state.status == RecordingStatus.idle) {
-        emit(const RecordingState(status: RecordingStatus.uploaded));
+        emit(
+          const RecordingState(
+            status: RecordingStatus.uploaded,
+            hasUploaded: true,
+          ),
+        );
       }
     } on AppFailure {
       // The student can still record; uploading replaces any earlier file.
     }
   }
 
-  /// Starts a new recording. An earlier recording is replaced.
+  /// Starts a new recording, replacing the one on the device. Nothing is
+  /// uploaded: a recording in Storage stays until [upload] replaces it.
   Future<void> start() async {
     const startable = [
       RecordingStatus.idle,
@@ -99,7 +120,12 @@ class RecordingCubit extends Cubit<RecordingState> {
       return;
     }
     _filePath = null;
-    emit(const RecordingState(status: RecordingStatus.recording));
+    emit(
+      RecordingState(
+        status: RecordingStatus.recording,
+        hasUploaded: state.hasUploaded,
+      ),
+    );
     _stopwatch
       ..reset()
       ..start();
@@ -109,6 +135,7 @@ class RecordingCubit extends Cubit<RecordingState> {
     );
   }
 
+  /// Stops recording and keeps the file on the device. Nothing is uploaded.
   Future<void> stop() async {
     if (state.status != RecordingStatus.recording) return;
     _ticker?.cancel();
@@ -116,7 +143,7 @@ class RecordingCubit extends Cubit<RecordingState> {
     try {
       final path = await _recorder.stop();
       if (path == null) {
-        emit(const RecordingState(errorMessage: 'لم يُحفظ التسجيل. أعد المحاولة.'));
+        emit(_withoutLocal('لم يُحفظ التسجيل. أعد المحاولة.'));
         return;
       }
       _filePath = path;
@@ -124,13 +151,23 @@ class RecordingCubit extends Cubit<RecordingState> {
         RecordingState(
           status: RecordingStatus.recorded,
           elapsed: _stopwatch.elapsed,
+          hasUploaded: state.hasUploaded,
         ),
       );
     } on AppFailure catch (failure) {
-      emit(RecordingState(errorMessage: failure.message));
+      emit(_withoutLocal(failure.message));
     }
   }
 
+  /// The state once the recording on the device is lost: back to the
+  /// recording in Storage when there is one.
+  RecordingState _withoutLocal(String errorMessage) => RecordingState(
+    status: state.hasUploaded ? RecordingStatus.uploaded : RecordingStatus.idle,
+    hasUploaded: state.hasUploaded,
+    errorMessage: errorMessage,
+  );
+
+  /// Plays the recording kept on the device.
   Future<void> play() async {
     final path = _filePath;
     if (state.status != RecordingStatus.recorded || path == null) return;
@@ -150,14 +187,25 @@ class RecordingCubit extends Cubit<RecordingState> {
     await _player.stop();
   }
 
+  /// Uploads the recording kept on the device, replacing the one in Storage.
+  /// The examination is not submitted.
   Future<void> upload() async {
     final path = _filePath;
     if (state.status != RecordingStatus.recorded || path == null) return;
-    emit(state.copyWith(status: RecordingStatus.uploading));
+    emit(state.copyWith(status: RecordingStatus.uploading, uploadProgress: 0));
     try {
-      await _repository.uploadRecording(examId: _examId, filePath: path);
-      emit(state.copyWith(status: RecordingStatus.uploaded));
+      await _repository.uploadRecording(
+        examId: _examId,
+        filePath: path,
+        onProgress: (progress) {
+          if (isClosed || state.status != RecordingStatus.uploading) return;
+          emit(state.copyWith(uploadProgress: progress.clamp(0, 1).toDouble()));
+        },
+      );
+      if (isClosed) return;
+      emit(state.copyWith(status: RecordingStatus.uploaded, hasUploaded: true));
     } on AppFailure catch (failure) {
+      if (isClosed) return;
       emit(
         state.copyWith(
           status: RecordingStatus.recorded,

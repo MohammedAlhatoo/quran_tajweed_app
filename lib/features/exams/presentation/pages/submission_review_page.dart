@@ -138,7 +138,8 @@ class _ReviewView extends StatelessWidget {
                     ? 'جارٍ التحقق...'
                     : submission.hasRecording
                     ? 'تم رفع التسجيل'
-                    : 'لم يُرفع التسجيل بعد',
+                    : 'لم يُرفع التسجيل بعد. ارجع إلى صفحة التلاوة وارفع '
+                          'التسجيل قبل إرسال الاختبار.',
                 missing: !checking && !submission.hasRecording,
               ),
               const SizedBox(height: 28),

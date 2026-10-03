@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:firebase_storage/firebase_storage.dart';
@@ -10,14 +11,32 @@ class StorageService {
   final FirebaseStorage _storage;
 
   /// Uploads [file] to [path], replacing any object already there.
+  /// [onProgress] receives the uploaded share, from 0 to 1.
   Future<void> uploadFile({
     required String path,
     required File file,
     required String contentType,
+    void Function(double progress)? onProgress,
   }) async {
-    await _storage
+    final task = _storage
         .ref(path)
         .putFile(file, SettableMetadata(contentType: contentType));
+    final progress = onProgress == null
+        ? null
+        : task.snapshotEvents.listen(
+            (snapshot) {
+              if (snapshot.totalBytes > 0) {
+                onProgress(snapshot.bytesTransferred / snapshot.totalBytes);
+              }
+            },
+            // The failure is reported by the task itself.
+            onError: (_) {},
+          );
+    try {
+      await task;
+    } finally {
+      await progress?.cancel();
+    }
   }
 
   /// Downloads the object at [path] into [file], replacing its contents.
