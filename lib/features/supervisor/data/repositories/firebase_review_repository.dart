@@ -172,9 +172,13 @@ class FirebaseReviewRepository implements ReviewRepository {
       final snapshot = await _firestore
           .collection(FirebaseCollections.tajweedRules)
           .get();
+      // Only an active rule performed in recitation can be recorded as a
+      // recitation error.
       final rules = [
         for (final doc in snapshot.docs)
-          ?TajweedRule.fromMap(doc.id, doc.data()),
+          if (TajweedRule.fromMap(doc.id, doc.data()) case final rule?
+              when rule.isActive && rule.isRecitation)
+            rule,
       ];
       rules.sort((a, b) => a.name.compareTo(b.name));
       return rules;
