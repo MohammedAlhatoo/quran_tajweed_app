@@ -881,6 +881,7 @@ question_bank/{questionId}
 
 courseId
 ruleId
+level         (the level that introduces the rule, a `courses.level` value)
 type
 question
 options
@@ -911,6 +912,17 @@ Students cannot read `question_answers` through Firestore.
 When the examination is created, the system selects 10 questions from `question_bank` according to the course rules and the approved criteria, then saves the selected questions in `exam_questions`.
 
 Selection: 10 active questions of the course, spread across the Tajweed rules. If fewer than 10 are available, the examination cannot be started.
+
+Cumulative distribution: each question belongs to the level that introduces its rule (`question_bank.level`), and the 10 questions are shared between the levels by fixed counts, so the course's own content always holds the largest share:
+
+| Course | Introductory | Qualifying | Advanced | Sanad |
+|---|---|---|---|---|
+| Introductory | 10 | — | — | — |
+| Qualifying | 3 | 7 | — | — |
+| Advanced | 1 | 3 | 6 | — |
+| Sanad | 1 | 1 | 3 | 5 |
+
+Within one level the questions are spread across the rules as before. When a level has fewer questions than its count, the shortfall is taken from the nearest lower level, and from the higher ones only when the lower ones run out. The selected questions are then put in a random order. A `question_bank` document without `level` is read as introductory.
 
 ```text
 exam_questions/{examId}_{order}

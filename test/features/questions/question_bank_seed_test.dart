@@ -51,6 +51,7 @@ List<Question> _questionsOf(CourseLevel level) => [
         courseId: level.value,
         ruleId: seed.ruleId,
         difficulty: questionDifficulty(seed),
+        level: questionLevel(seed),
       ),
       'isActive': true,
     })!,
@@ -78,9 +79,11 @@ void main() {
         'question': 'سؤال',
         'options': ['أ', 'ب'],
         'difficulty': 3,
+        'level': 'advanced',
         'isActive': true,
       })!;
 
+      expect(question.level, CourseLevel.advanced);
       expect(question.difficulty, 3);
     });
 
@@ -182,10 +185,12 @@ void main() {
           courseId: 'c1',
           ruleId: seed.ruleId,
           difficulty: 1,
+          level: CourseLevel.introductory,
         );
         expect(document.keys, [
           'courseId',
           'ruleId',
+          'level',
           'type',
           'question',
           'options',
@@ -221,6 +226,7 @@ void main() {
       for (final level in CourseLevel.values) {
         final selected = const QuestionSelector().select(
           courseId: level.value,
+          courseLevel: level,
           questions: _questionsOf(level),
           courseRuleWeights: const {},
           random: Random(1),
@@ -228,6 +234,41 @@ void main() {
 
         expect(selected, hasLength(10), reason: level.value);
         expect({for (final question in selected!) question.id}, hasLength(10));
+      }
+    });
+
+    test('belong to the level that introduces their rule', () {
+      for (final seed in questionSeeds) {
+        expect(questionLevel(seed), _rules[seed.ruleId]!.introducedAt);
+      }
+    });
+
+    test('fill the share of every level in every examination', () {
+      for (final level in CourseLevel.values) {
+        final questions = _questionsOf(level);
+        final weights = {
+          for (final rule in rulesOfLevel(level))
+            rule.id: courseRuleWeight(rule, level).toDouble(),
+        };
+        for (var seed = 0; seed < 100; seed++) {
+          final selected = const QuestionSelector().select(
+            courseId: level.value,
+            courseLevel: level,
+            questions: questions,
+            courseRuleWeights: weights,
+            random: Random(seed),
+          )!;
+
+          final counts = <CourseLevel, int>{};
+          for (final question in selected) {
+            counts[question.level] = (counts[question.level] ?? 0) + 1;
+          }
+          expect(
+            counts,
+            QuestionSelector.quotasOf(level),
+            reason: '${level.value} seed $seed',
+          );
+        }
       }
     });
 
@@ -287,6 +328,7 @@ void main() {
       expect(bank['introductory_madd_tabii_1'], {
         'courseId': 'introductory',
         'ruleId': 'madd_tabii',
+        'level': 'introductory',
         'type': 'multiple_choice',
         'question': 'ما مقدار المد الطبيعي؟',
         'options': hasLength(4),
@@ -352,6 +394,39 @@ void main() {
       expect(
         store.docs(FirebaseCollections.questionBank),
         hasLength(expectedCount()),
+      );
+    });
+
+    test('writes the level that introduces the rule, whatever the course, and '
+        'adds it to a question stored without it', () async {
+      await CurriculumSeeder(store).seed();
+
+      final bank = store.docs(FirebaseCollections.questionBank);
+      for (final seed in questionSeeds) {
+        final introducedAt = _rules[seed.ruleId]!.introducedAt;
+        for (final course in CourseLevel.values) {
+          if (course.index < introducedAt.index) continue;
+          expect(
+            bank['${course.value}_${seed.key}'],
+            containsPair('level', introducedAt.value),
+          );
+        }
+      }
+
+      for (final document in bank.values) {
+        document.remove('level');
+      }
+      bank['sanad_madd_tabii_1']!['isActive'] = false;
+
+      final result = await CurriculumSeeder(store).seed();
+
+      expect(result.questionsCreated, 0);
+      expect(result.questionsUpdated, expectedCount());
+      expect(bank['sanad_madd_tabii_1'], containsPair('level', 'introductory'));
+      expect(bank['sanad_madd_tabii_1'], containsPair('isActive', false));
+      expect(
+        bank['sanad_madd_muttasil_1'],
+        containsPair('level', 'qualifying'),
       );
     });
 

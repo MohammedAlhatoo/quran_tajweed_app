@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../core/constants/firebase_collections.dart';
 import '../../../../core/utils/app_failure.dart';
 import '../../../auth/domain/entities/app_user.dart';
+import '../../../courses/domain/entities/course_level.dart';
 import '../../../questions/domain/entities/question.dart';
 import '../../../questions/domain/services/question_selector.dart';
 import '../../domain/entities/exam.dart';
@@ -77,6 +78,10 @@ class FirestoreExamsRepository implements ExamsRepository {
         );
       }
 
+      final courseLevel = await _fetchCourseLevel(courseId);
+      if (courseLevel == null) {
+        throw const AppFailure('هذه الدورة غير متاحة حاليًا.');
+      }
       final ruleWeights = await _fetchCourseRuleWeights(courseId);
       final segment = _segmentSelector.select(
         courseId: courseId,
@@ -89,6 +94,7 @@ class FirestoreExamsRepository implements ExamsRepository {
       }
       final questions = _questionSelector.select(
         courseId: courseId,
+        courseLevel: courseLevel,
         questions: await _fetchCourseQuestions(courseId),
         courseRuleWeights: ruleWeights,
         random: _random,
@@ -187,6 +193,15 @@ class FirestoreExamsRepository implements ExamsRepository {
     } on FirebaseException catch (e) {
       throw AppFailure.fromFirebase(e);
     }
+  }
+
+  /// Returns null when the course does not exist or has no valid level.
+  Future<CourseLevel?> _fetchCourseLevel(String courseId) async {
+    final snapshot = await _firestore
+        .collection(FirebaseCollections.courses)
+        .doc(courseId)
+        .get();
+    return CourseLevel.fromValue(snapshot.data()?['level']);
   }
 
   /// The weight of each Tajweed rule of the course, from `course_rules`.

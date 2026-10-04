@@ -1,3 +1,4 @@
+import '../../../courses/domain/entities/course_level.dart';
 import '../../domain/entities/question_type.dart';
 
 export '../../domain/entities/question_type.dart' show QuestionType;
@@ -66,14 +67,17 @@ class QuestionSeed {
   }
 
   /// The fields of the `question_bank` document, without `isActive` and its
-  /// timestamps. It never holds the correct answer.
+  /// timestamps. It never holds the correct answer. [level] is the level
+  /// that introduces the rule, whatever the course of the document.
   Map<String, Object?> toMap({
     required String courseId,
     required String ruleId,
     required int difficulty,
+    required CourseLevel level,
   }) => {
     'courseId': courseId,
     'ruleId': ruleId,
+    'level': level.value,
     'type': type.value,
     'question': question,
     'options': options,

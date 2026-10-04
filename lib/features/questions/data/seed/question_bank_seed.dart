@@ -30,6 +30,11 @@ List<QuestionSeed> questionsOfLevel(CourseLevel level) => [
       question,
 ];
 
+/// The level whose content [question] belongs to: the one that introduces
+/// its rule.
+CourseLevel questionLevel(QuestionSeed question) =>
+    _introducedAt[question.ruleId] ?? CourseLevel.introductory;
+
 /// The difficulty of [question], from 1 (easy) to 3 (hard). Unless the
 /// question sets its own, it follows the level that introduces its rule.
 int questionDifficulty(QuestionSeed question) =>

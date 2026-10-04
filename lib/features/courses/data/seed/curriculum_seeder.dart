@@ -209,6 +209,7 @@ class CurriculumSeeder {
           courseId: courseId,
           ruleId: ruleIds[seed.ruleId]!,
           difficulty: questionDifficulty(seed),
+          level: questionLevel(seed),
         );
         final stored = existing[id];
         if (stored == null) {

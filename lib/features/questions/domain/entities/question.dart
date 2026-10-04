@@ -1,3 +1,5 @@
+import '../../../courses/domain/entities/course_level.dart';
+
 /// A question from the `question_bank` collection.
 ///
 /// It never carries the correct answer: answers live in `question_answers`,
@@ -12,6 +14,7 @@ class Question {
     required this.options,
     required this.isActive,
     this.difficulty = 1,
+    this.level = CourseLevel.introductory,
   });
 
   final String id;
@@ -26,6 +29,11 @@ class Question {
 
   /// From 1 (easy) to 3 (hard). A document without it is read as easy.
   final int difficulty;
+
+  /// The level whose content the question belongs to: the one that
+  /// introduces its rule, not the course of the document. A document without
+  /// it is read as introductory.
+  final CourseLevel level;
 
   /// Returns null when the document has no course, type or question text.
   static Question? fromMap(String id, Map<String, dynamic> data) {
@@ -48,6 +56,7 @@ class Question {
           : const [],
       isActive: data['isActive'] == true,
       difficulty: difficulty is int ? difficulty : 1,
+      level: CourseLevel.fromValue(data['level']) ?? CourseLevel.introductory,
     );
   }
 }
