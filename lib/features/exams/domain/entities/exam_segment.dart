@@ -11,6 +11,7 @@ class ExamSegment {
     required this.courseIds,
     required this.ruleDensity,
     required this.isActive,
+    this.difficulty = 1,
   });
 
   final String id;
@@ -22,6 +23,9 @@ class ExamSegment {
   final List<String> courseIds;
   final double ruleDensity;
   final bool isActive;
+
+  /// From 1 (easy) to 3 (hard). 1 when the document does not set it.
+  final int difficulty;
 
   /// Returns null when the reference is missing or outside the Mushaf.
   static ExamSegment? fromMap(String id, Map<String, dynamic> data) {
@@ -35,6 +39,7 @@ class ExamSegment {
     if (page is! int || page < 1 || page > 604) return null;
 
     final ruleDensity = data['ruleDensity'];
+    final difficulty = data['difficulty'];
     return ExamSegment(
       id: id,
       surah: surah,
@@ -45,6 +50,7 @@ class ExamSegment {
       courseIds: _strings(data['courseIds']),
       ruleDensity: ruleDensity is num ? ruleDensity.toDouble() : 0,
       isActive: data['isActive'] == true,
+      difficulty: difficulty is int ? difficulty : 1,
     );
   }
 

@@ -5,9 +5,10 @@ import 'curriculum_seeder.dart';
 /// A [SeedStore] over Firestore.
 ///
 /// The security rules give no client write access to `courses`,
-/// `tajweed_rules`, `course_rules`, `question_bank` or `question_answers`, and
-/// nobody may list `question_answers`, so this only succeeds against the
-/// emulator or where that access is allowed. Nothing in the app calls it.
+/// `tajweed_rules`, `course_rules`, `question_bank`, `question_answers` or
+/// `exam_segments`, and nobody may list `question_answers`, so this only
+/// succeeds against the emulator or where that access is allowed. Nothing in
+/// the app calls it.
 class FirestoreSeedStore implements SeedStore {
   FirestoreSeedStore({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;

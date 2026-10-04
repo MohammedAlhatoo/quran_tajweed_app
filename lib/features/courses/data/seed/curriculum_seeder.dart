@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../../core/constants/firebase_collections.dart';
+import '../../../exams/data/seed/exam_segments_seed.dart';
 import '../../../questions/data/seed/question_bank_seed.dart';
 import '../../domain/entities/course_level.dart';
 import 'curriculum_seed.dart';
@@ -31,6 +32,8 @@ class CurriculumSeedResult {
     required this.questionsCreated,
     required this.questionsUpdated,
     required this.answersWritten,
+    required this.segmentsCreated,
+    required this.segmentsUpdated,
   });
 
   final int coursesCreated;
@@ -43,6 +46,9 @@ class CurriculumSeedResult {
   /// The `question_answers` documents created or corrected.
   final int answersWritten;
 
+  final int segmentsCreated;
+  final int segmentsUpdated;
+
   bool get wroteNothing =>
       coursesCreated +
           rulesCreated +
@@ -50,16 +56,18 @@ class CurriculumSeedResult {
           courseRulesCreated +
           questionsCreated +
           questionsUpdated +
-          answersWritten ==
+          answersWritten +
+          segmentsCreated +
+          segmentsUpdated ==
       0;
 }
 
-/// Writes the four courses, the Tajweed rules, their links, and the question
-/// bank with its answers.
+/// Writes the four courses, the Tajweed rules, their links, the question
+/// bank with its answers, and the examination segments.
 ///
 /// It can be run again safely: it adds what is missing and never creates a
-/// second copy of a course, a rule, a link or a question. The data belongs to
-/// no user.
+/// second copy of a course, a rule, a link, a question or a segment. The data
+/// belongs to no user.
 class CurriculumSeeder {
   const CurriculumSeeder(this._store);
 
@@ -70,6 +78,7 @@ class CurriculumSeeder {
     final rules = await _seedRules();
     final links = await _seedCourseRules(courses.ids, rules.ids);
     final questions = await _seedQuestions(courses.ids, rules.ids);
+    final segments = await _seedSegments(courses.ids, rules.ids);
     return CurriculumSeedResult(
       coursesCreated: courses.created,
       rulesCreated: rules.created,
@@ -78,6 +87,8 @@ class CurriculumSeeder {
       questionsCreated: questions.created,
       questionsUpdated: questions.updated,
       answersWritten: questions.answers,
+      segmentsCreated: segments.created,
+      segmentsUpdated: segments.updated,
     );
   }
 
@@ -226,6 +237,40 @@ class CurriculumSeeder {
       updated: questions.length - created,
       answers: answers.length,
     );
+  }
+
+  /// A segment is written under the ID of its reference, linked to the courses
+  /// it is given in and to the rules that have a place in it. An existing
+  /// segment keeps its `isActive`; its definition is brought up to date.
+  Future<({int created, int updated})> _seedSegments(
+    Map<CourseLevel, String> courseIds,
+    Map<String, String> ruleIds,
+  ) async {
+    final existing = await _store.readAll(FirebaseCollections.examSegments);
+    final writes = <String, Map<String, Object?>>{};
+    var created = 0;
+    for (final seed in examSegmentSeeds) {
+      final definition = seed.toMap(
+        ruleIds: [for (final ruleId in seed.ruleIds) ruleIds[ruleId]!],
+        courseIds: [for (final level in seed.levels) courseIds[level]!],
+      );
+      final stored = existing[seed.id];
+      if (stored == null) {
+        created++;
+        writes[seed.id] = {
+          ...definition,
+          'isActive': true,
+          'createdAt': _store.timestamp,
+        };
+        continue;
+      }
+      final changed = definition.entries.any(
+        (field) => !_sameValue(stored[field.key], field.value),
+      );
+      if (changed) writes[seed.id] = definition;
+    }
+    await _store.writeAll(FirebaseCollections.examSegments, writes);
+    return (created: created, updated: writes.length - created);
   }
 
   /// Lists are compared by their items: a list read from the store is never
