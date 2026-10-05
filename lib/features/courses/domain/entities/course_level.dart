@@ -1,15 +1,16 @@
 /// The four examination levels, in the order they are shown.
 enum CourseLevel {
-  introductory('introductory', 'مستوى المبتدئين'),
-  qualifying('qualifying', 'مستوى متوسط'),
-  advanced('advanced', 'مستوى متقدم'),
-  sanad('sanad', 'مستوى عالي');
+  introductory('introductory', 'تمهيدية'),
+  qualifying('qualifying', 'تأهيلية'),
+  advanced('advanced', 'عليا'),
+  sanad('sanad', 'السند');
 
   const CourseLevel(this.value, this.label);
 
   /// The value stored in the `level` field of the `courses` document.
   final String value;
 
+  /// The approved name of the level, as the student reads it.
   final String label;
 
   static CourseLevel? fromValue(Object? value) {

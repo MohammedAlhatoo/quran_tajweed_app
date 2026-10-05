@@ -34,6 +34,8 @@ import 'features/onboarding/data/onboarding_store.dart';
 import 'features/notifications/domain/repositories/notifications_repository.dart';
 import 'features/questions/data/repositories/firestore_questions_repository.dart';
 import 'features/questions/domain/repositories/questions_repository.dart';
+import 'features/quran/data/repositories/asset_quran_repository.dart';
+import 'features/quran/domain/repositories/quran_repository.dart';
 import 'features/student/data/repositories/firestore_student_profile_repository.dart';
 import 'features/student/domain/repositories/student_profile_repository.dart';
 import 'features/supervisor/data/repositories/firebase_review_repository.dart';
@@ -121,6 +123,10 @@ class _QuranTajweedAppState extends State<QuranTajweedApp> {
         ),
         RepositoryProvider<QuestionsRepository>(
           create: (_) => FirestoreQuestionsRepository(),
+        ),
+        // One for the whole app, as it keeps the Quran data it has read.
+        RepositoryProvider<QuranRepository>(
+          create: (_) => AssetQuranRepository(),
         ),
         RepositoryProvider<StudentProfileRepository>(
           create: (_) => FirestoreStudentProfileRepository(),

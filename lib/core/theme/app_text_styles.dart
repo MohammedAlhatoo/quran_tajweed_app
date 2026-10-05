@@ -65,6 +65,21 @@ abstract final class AppTextStyles {
     color: AppColors.textSecondary,
   );
 
+  /// The font of the Quran text, from the same source as the text itself.
+  static const String quranFontFamily = 'UthmanicHafs';
+
+  /// Quran text, one Mushaf line at a time. It inherits nothing, so no letter
+  /// spacing and no other font of the app theme can reach the text. The line
+  /// height leaves room for the marks above and below the letters.
+  static const TextStyle quran = TextStyle(
+    inherit: false,
+    fontFamily: quranFontFamily,
+    fontSize: 22,
+    height: 2,
+    color: AppColors.textPrimary,
+    textBaseline: TextBaseline.alphabetic,
+  );
+
   static TextTheme get textTheme => GoogleFonts.cairoTextTheme()
       .apply(
         bodyColor: AppColors.textPrimary,

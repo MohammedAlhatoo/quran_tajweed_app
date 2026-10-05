@@ -6,6 +6,7 @@ import 'package:quran_tajweed_app/features/certificates/domain/repositories/cert
 import 'package:quran_tajweed_app/features/certificates/presentation/state/certificates_cubit.dart';
 import 'package:quran_tajweed_app/features/courses/domain/entities/course.dart';
 import 'package:quran_tajweed_app/features/courses/domain/entities/course_level.dart';
+import 'package:quran_tajweed_app/features/courses/domain/entities/tajweed_rule.dart';
 import 'package:quran_tajweed_app/features/courses/domain/repositories/courses_repository.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/evaluation.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/exam.dart';
@@ -109,7 +110,7 @@ class _FakeCoursesRepository implements CoursesRepository {
   );
 
   @override
-  Future<List<String>> fetchCourseRuleNames(String courseId) async => const [];
+  Future<List<TajweedRule>> fetchCourseRules(String courseId) async => const [];
 }
 
 DateTime? _noDate(Object? value) => null;

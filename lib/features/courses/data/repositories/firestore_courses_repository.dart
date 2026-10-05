@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../core/constants/firebase_collections.dart';
 import '../../../../core/utils/app_failure.dart';
 import '../../domain/entities/course.dart';
+import '../../domain/entities/tajweed_rule.dart';
 import '../../domain/repositories/courses_repository.dart';
 
 class FirestoreCoursesRepository implements CoursesRepository {
@@ -47,7 +48,7 @@ class FirestoreCoursesRepository implements CoursesRepository {
   }
 
   @override
-  Future<List<String>> fetchCourseRuleNames(String courseId) async {
+  Future<List<TajweedRule>> fetchCourseRules(String courseId) async {
     try {
       final links = await _firestore
           .collection(FirebaseCollections.courseRules)
@@ -58,20 +59,19 @@ class FirestoreCoursesRepository implements CoursesRepository {
           if (doc.data()['ruleId'] case final String ruleId) ruleId,
       }.toList();
 
-      final names = <String>[];
+      final rules = <TajweedRule>[];
       for (var i = 0; i < ruleIds.length; i += _whereInLimit) {
         final end = (i + _whereInLimit).clamp(0, ruleIds.length);
-        final rules = await _firestore
+        final snapshot = await _firestore
             .collection(FirebaseCollections.tajweedRules)
             .where(FieldPath.documentId, whereIn: ruleIds.sublist(i, end))
             .get();
-        for (final doc in rules.docs) {
-          if (doc.data()['name'] case final String name when name.isNotEmpty) {
-            names.add(name);
-          }
-        }
+        rules.addAll([
+          for (final doc in snapshot.docs)
+            ?TajweedRule.fromMap(doc.id, doc.data()),
+        ]);
       }
-      return names;
+      return rules;
     } on FirebaseException catch (e) {
       throw AppFailure.fromFirebase(e);
     }

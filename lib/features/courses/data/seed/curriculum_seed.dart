@@ -7,11 +7,20 @@ import 'tajweed_rule_seed.dart';
 
 /// The definition of one `courses` document.
 class CourseSeed {
-  const CourseSeed(this.level, this.name, this.description);
+  const CourseSeed(
+    this.level,
+    this.name,
+    this.description, {
+    this.objectives = const [],
+  });
 
   final CourseLevel level;
   final String name;
   final String description;
+
+  /// The learning objectives shown on the course details screen. May be
+  /// empty.
+  final List<String> objectives;
 
   /// The document ID used when the course does not exist yet.
   String get id => level.value;
@@ -24,6 +33,7 @@ class CourseSeed {
     'name': name,
     'description': description,
     'level': level.value,
+    'objectives': objectives,
     'isActive': true,
   };
 }
@@ -43,21 +53,41 @@ const courseSeeds = <CourseSeed>[
     CourseLevel.introductory,
     'تمهيدية',
     'مبادئ التجويد ومخارج الحروف وصفاتها الأساسية وأحكام النون والميم والمد الطبيعي.',
+    objectives: [
+      'التعرف على أساسيات أحكام التجويد اللازمة لصحة التلاوة.',
+      'إتقان النطق الصحيح للحروف والكلمات الأساسية في القرآن الكريم.',
+      'تطبيق الأحكام التمهيدية أثناء التلاوة بصورة صحيحة.',
+    ],
   ),
   CourseSeed(
     CourseLevel.qualifying,
     'تأهيلية',
     'التوسع في المخارج والصفات والإدغام والمدود والراءات واللامات والهمز وهاء الكناية.',
+    objectives: [
+      'إتقان الأحكام الأساسية والمتوسطة في التجويد وتطبيقها أثناء التلاوة.',
+      'تحسين ضبط مخارج الحروف وصفاتها وأحكام المد والغنة وغيرها من الأحكام.',
+      'الاستعداد لتقديم اختبار تلاوة أكثر شمولًا ودقة.',
+    ],
   ),
   CourseSeed(
     CourseLevel.advanced,
     'عليا',
     'تفريعات المدود والوقف والابتداء والروم والإشمام والرسم وما يراعى لحفص.',
+    objectives: [
+      'إتقان الأحكام المتقدمة في التجويد وتطبيقها بدقة أثناء التلاوة.',
+      'رفع مستوى ضبط الأداء والوقف والابتداء والأحكام المتقدمة.',
+      'الوصول إلى مستوى متقدم يؤهل الطالب لاختبارات الإتقان الأعلى.',
+    ],
   ),
   CourseSeed(
     CourseLevel.sanad,
     'السند',
     'جميع أحكام رواية حفص عن عاصم من طريق الشاطبية بدقائق أدائها ومواضعها الخاصة.',
+    objectives: [
+      'إتقان أحكام التجويد المتقدمة وجميع الأحكام المقررة لمسار السند.',
+      'ضبط الأداء القرآني والوقف والابتداء ووجوه الأداء الخاصة برواية حفص.',
+      'الاستعداد لاختبار السند وفق المستوى العلمي والأدائي المطلوب.',
+    ],
   ),
 ];
 

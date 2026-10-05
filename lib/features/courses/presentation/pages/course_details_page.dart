@@ -6,15 +6,19 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_assets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/helpers.dart';
 import '../../../../core/widgets/app_back_button.dart';
-import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/state_views.dart';
 import '../../../../router/route_names.dart';
 import '../../../auth/presentation/state/auth_cubit.dart';
 import '../../../auth/presentation/state/auth_state.dart';
+import '../../../exams/domain/entities/exam.dart';
 import '../../../exams/presentation/state/start_exam_cubit.dart';
+import '../../../questions/domain/services/question_selector.dart';
+import '../../../supervisor/domain/services/exam_scoring.dart';
 import '../../domain/entities/course.dart';
+import '../../domain/entities/tajweed_rule_group.dart';
 import '../state/course_details_cubit.dart';
 
 class CourseDetailsPage extends StatelessWidget {
@@ -38,8 +42,7 @@ class CourseDetailsPage extends StatelessWidget {
               message: message,
               onRetry: context.read<CourseDetailsCubit>().load,
             ),
-            CourseDetailsLoaded(:final course, :final ruleNames) =>
-              _CourseDetails(course: course, ruleNames: ruleNames),
+            CourseDetailsLoaded() => _CourseDetails(state),
           };
         },
       ),
@@ -48,13 +51,15 @@ class CourseDetailsPage extends StatelessWidget {
 }
 
 class _CourseDetails extends StatelessWidget {
-  const _CourseDetails({required this.course, required this.ruleNames});
+  const _CourseDetails(this.state);
 
-  final Course course;
-  final List<String> ruleNames;
+  final CourseDetailsLoaded state;
 
   @override
   Widget build(BuildContext context) {
+    final course = state.course;
+    final ruleGroups = state.ruleGroups;
+
     return Column(
       children: [
         Expanded(
@@ -66,21 +71,23 @@ class _CourseDetails extends StatelessWidget {
                 const SizedBox(height: 24),
                 const _SectionTitle('أهداف الدورة'),
                 const SizedBox(height: 12),
-                for (final objective in course.objectives)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _Objective(objective),
-                  ),
+                for (final (index, objective) in course.objectives.indexed) ...[
+                  if (index > 0) const SizedBox(height: 10),
+                  _Objective(objective),
+                ],
               ],
-              if (ruleNames.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              const _SectionTitle('معلومات الامتحان'),
+              const SizedBox(height: 12),
+              const _ExamInfoCard(),
+              if (ruleGroups.isNotEmpty) ...[
                 const SizedBox(height: 24),
                 const _SectionTitle('الأحكام الرئيسية'),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [for (final name in ruleNames) _RuleTag(name)],
-                ),
+                for (final (index, group) in ruleGroups.indexed) ...[
+                  if (index > 0) const SizedBox(height: 8),
+                  _RuleGroupSection(group),
+                ],
               ],
             ],
           ),
@@ -89,9 +96,20 @@ class _CourseDetails extends StatelessWidget {
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: SizedBox(
-              width: double.infinity,
-              child: _StartExamButton(courseId: course.id),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (state.isAwaitingReview) ...[
+                  const _AwaitingReviewNotice(),
+                  const SizedBox(height: 12),
+                ],
+                _ExamButton(
+                  courseId: course.id,
+                  openExam: state.openExam,
+                  isAwaitingReview: state.isAwaitingReview,
+                ),
+              ],
             ),
           ),
         ),
@@ -100,10 +118,17 @@ class _CourseDetails extends StatelessWidget {
   }
 }
 
-class _StartExamButton extends StatelessWidget {
-  const _StartExamButton({required this.courseId});
+/// Starts an examination of the course, or continues the open one.
+class _ExamButton extends StatelessWidget {
+  const _ExamButton({
+    required this.courseId,
+    required this.openExam,
+    required this.isAwaitingReview,
+  });
 
   final String courseId;
+  final Exam? openExam;
+  final bool isAwaitingReview;
 
   void _start(BuildContext context) {
     final authState = context.read<AuthCubit>().state;
@@ -114,25 +139,340 @@ class _StartExamButton extends StatelessWidget {
     );
   }
 
+  /// Opens the examination, and reads its status again once the student comes
+  /// back from it.
+  Future<void> _open(BuildContext context, String examId) async {
+    final details = context.read<CourseDetailsCubit>();
+    await context.push(RouteNames.studentExam(examId));
+    if (!details.isClosed) await details.load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<StartExamCubit, StartExamState>(
       listener: (context, state) {
         switch (state) {
           case StartExamReady(:final exam):
-            context.push(RouteNames.studentExam(exam.id));
+            _open(context, exam.id);
           case StartExamError(:final message):
             showAppSnackBar(context, message, isError: true);
           case StartExamIdle() || StartExamLoading():
             break;
         }
       },
-      builder: (context, state) => AppButton(
-        label: 'بدء الاختبار',
-        isLoading: state is StartExamLoading,
-        onPressed: () => _start(context),
+      builder: (context, state) {
+        if (isAwaitingReview) {
+          return const _ExamActionButton(
+            label: 'الامتحان قيد المراجعة',
+            onPressed: null,
+          );
+        }
+        if (openExam case final exam?) {
+          return _ExamActionButton(
+            label: 'متابعة الامتحان',
+            onPressed: () => _open(context, exam.id),
+          );
+        }
+        return _ExamActionButton(
+          label: 'تقديم الامتحان',
+          isLoading: state is StartExamLoading,
+          onPressed: () => _start(context),
+        );
+      },
+    );
+  }
+}
+
+/// The button of this page as Figma draws it: its own green, 48 high, over a
+/// light neutral shadow.
+class _ExamActionButton extends StatelessWidget {
+  const _ExamActionButton({
+    required this.label,
+    required this.onPressed,
+    this.isLoading = false,
+  });
+
+  static const Color _color = Color(0xFF18675F);
+
+  final String label;
+  final VoidCallback? onPressed;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+        // The disabled fill is translucent, so a shadow would show through it.
+        boxShadow: onPressed == null
+            ? null
+            : const [
+                BoxShadow(
+                  color: Color(0x1A000000),
+                  offset: Offset(0, 4),
+                  blurRadius: 6,
+                  spreadRadius: -1,
+                ),
+                BoxShadow(
+                  color: Color(0x0F000000),
+                  offset: Offset(0, 2),
+                  blurRadius: 4,
+                  spreadRadius: -2,
+                ),
+              ],
+      ),
+      child: FilledButton(
+        style: FilledButton.styleFrom(
+          backgroundColor: _color,
+          minimumSize: const Size.fromHeight(48),
+        ),
+        // Stays enabled-looking while loading, but ignores taps.
+        onPressed: isLoading ? () {} : onPressed,
+        child: isLoading
+            ? const SizedBox.square(
+                dimension: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: AppColors.onPrimary,
+                ),
+              )
+            : Text(label),
       ),
     );
+  }
+}
+
+class _AwaitingReviewNotice extends StatelessWidget {
+  const _AwaitingReviewNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'امتحانك في هذه الدورة قيد المراجعة. '
+      'لا يمكن تقديم امتحان جديد قبل اعتماد نتيجته.',
+      textAlign: TextAlign.center,
+      style: AppTextStyles.cairo(
+        size: 12,
+        weight: FontWeight.w500,
+        color: AppColors.muted,
+        lineHeight: 18,
+      ),
+    );
+  }
+}
+
+/// What the examination consists of. It has no time limit, so none is shown.
+class _ExamInfoCard extends StatelessWidget {
+  const _ExamInfoCard();
+
+  static const int _fullMark =
+      ExamScoring.maxRecitationScore + ExamScoring.maxTheoryScore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.lineSoft),
+      ),
+      child: const Column(
+        children: [
+          _InfoRow(
+            'عدد الأسئلة النظرية',
+            '${QuestionSelector.examQuestionCount}',
+          ),
+          _InfoRow('درجة التلاوة', '${ExamScoring.maxRecitationScore}'),
+          _InfoRow('درجة الأسئلة', '${ExamScoring.maxTheoryScore}'),
+          _InfoRow('درجة النجاح', '${ExamScoring.passMark}/$_fullMark'),
+          _InfoRow('تسجيل التلاوة', 'ضمن الامتحان'),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow(this.label, this.value);
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: AppTextStyles.cairo(
+                size: 12,
+                weight: FontWeight.w500,
+                color: AppColors.bodyText,
+                lineHeight: 18,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            value,
+            style: AppTextStyles.cairo(
+              size: 13,
+              weight: FontWeight.w700,
+              color: AppColors.title,
+              lineHeight: 18,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One chapter of the course's rules. It opens to show the rules, so a course
+/// with many of them stays short.
+class _RuleGroupSection extends StatefulWidget {
+  const _RuleGroupSection(this.group);
+
+  final TajweedRuleGroup group;
+
+  @override
+  State<_RuleGroupSection> createState() => _RuleGroupSectionState();
+}
+
+class _RuleGroupSectionState extends State<_RuleGroupSection> {
+  static const Color _openBackground = Color(0xFFD2EBE7);
+  static const Color _openBorder = Color(0xFFB2DED8);
+  static const Color _openText = Color(0xFF11554F);
+
+  bool _isOpen = false;
+
+  ShapeBorder _shape(Color border) => RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(8),
+    side: BorderSide(color: border),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final group = widget.group;
+
+    // Only the title row is outlined and highlighted, through the theme of
+    // its tile; the rules below it sit on the page.
+    return ListTileTheme.merge(
+      tileColor: _isOpen ? _openBackground : Colors.transparent,
+      shape: _shape(_isOpen ? _openBorder : AppColors.line),
+      child: ExpansionTile(
+        onExpansionChanged: (isOpen) => setState(() => _isOpen = isOpen),
+        shape: const Border(),
+        collapsedShape: const Border(),
+        backgroundColor: Colors.transparent,
+        collapsedBackgroundColor: Colors.transparent,
+        iconColor: _openText,
+        collapsedIconColor: AppColors.muted,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+        childrenPadding: const EdgeInsets.only(top: 8),
+        expandedAlignment: AlignmentDirectional.topStart,
+        title: Text(
+          group.label,
+          style: AppTextStyles.cairo(
+            size: 13,
+            weight: FontWeight.w700,
+            color: _isOpen ? _openText : AppColors.title,
+            lineHeight: 20,
+          ),
+        ),
+        subtitle: Text(
+          'عدد الأحكام: ${group.rules.length}',
+          style: AppTextStyles.cairo(
+            size: 11,
+            weight: FontWeight.w500,
+            color: _isOpen ? _openText : AppColors.muted,
+            lineHeight: 16.5,
+          ),
+        ),
+        children: [
+          _RuleTagGrid([for (final rule in group.rules) rule.name]),
+        ],
+      ),
+    );
+  }
+}
+
+/// The rules of a chapter on a grid of four columns, or fewer on a narrow
+/// screen. A name too long for one column takes as many as it needs, and
+/// wraps onto a second line only when the whole row is too narrow for it.
+class _RuleTagGrid extends StatelessWidget {
+  const _RuleTagGrid(this.names);
+
+  static const int _maxColumns = 4;
+  static const double _gap = 8;
+  static const double _minColumnWidth = 60;
+
+  final List<String> names;
+
+  @override
+  Widget build(BuildContext context) {
+    final textScaler = MediaQuery.textScalerOf(context);
+    final textDirection = Directionality.of(context);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final columns = ((width + _gap) / (_minColumnWidth + _gap))
+            .floor()
+            .clamp(1, _maxColumns);
+        // Rounded down, so a full row never spills onto the next one.
+        final columnWidth = ((width - _gap * (columns - 1)) / columns)
+            .floorToDouble();
+        double widthOf(int span) => columnWidth * span + _gap * (span - 1);
+
+        return Wrap(
+          spacing: _gap,
+          runSpacing: _gap,
+          children: [
+            for (final name in names)
+              SizedBox(
+                width: widthOf(
+                  _spanOf(
+                    name,
+                    columns: columns,
+                    widthOf: widthOf,
+                    textScaler: textScaler,
+                    textDirection: textDirection,
+                  ),
+                ),
+                child: _RuleTag(name),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// The number of columns [name] needs to stay on one line.
+  int _spanOf(
+    String name, {
+    required int columns,
+    required double Function(int span) widthOf,
+    required TextScaler textScaler,
+    required TextDirection textDirection,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(text: name, style: _RuleTag.textStyle),
+      textDirection: textDirection,
+      textScaler: textScaler,
+      maxLines: 1,
+    )..layout();
+    final needed = painter.width + _RuleTag.horizontalInset;
+    painter.dispose();
+
+    for (var span = 1; span < columns; span++) {
+      if (needed <= widthOf(span)) return span;
+    }
+    return columns;
   }
 }
 
@@ -281,26 +621,35 @@ class _Objective extends StatelessWidget {
 class _RuleTag extends StatelessWidget {
   const _RuleTag(this.name);
 
+  static const double _horizontalPadding = 6;
+
+  /// The padding and the border on both sides of the name.
+  static const double horizontalInset = (_horizontalPadding + 1) * 2 + 1;
+
+  static final TextStyle textStyle = AppTextStyles.cairo(
+    size: 12,
+    weight: FontWeight.w500,
+    color: AppColors.tagText,
+    lineHeight: 16,
+  );
+
   final String name;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      constraints: const BoxConstraints(minHeight: 33),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(
+        horizontal: _horizontalPadding,
+        vertical: 7.5,
+      ),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.line),
       ),
-      child: Text(
-        name,
-        style: AppTextStyles.cairo(
-          size: 12,
-          weight: FontWeight.w500,
-          color: AppColors.tagText,
-          lineHeight: 16,
-        ),
-      ),
+      child: Text(name, textAlign: TextAlign.center, style: textStyle),
     );
   }
 }

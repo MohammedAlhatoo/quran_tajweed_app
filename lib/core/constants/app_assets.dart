@@ -53,4 +53,7 @@ abstract final class AppAssets {
   static const String profileHistoryIcon = 'assets/icons/profile_history.svg';
   static const String profileCertificatesIcon =
       'assets/icons/profile_certificates.svg';
+
+  /// The whole Quran, Hafs 'an Asim, as KFGQPC publishes it. Read as it is.
+  static const String quranData = 'assets/quran/data/hafsData_v18.json';
 }

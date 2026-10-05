@@ -47,5 +47,10 @@ app.*.map.json
 # Security rules tests
 /rules_test/node_modules/
 
+# Administrative credentials are kept outside the project
+*service-account*.json
+*serviceAccount*.json
+*-firebase-adminsdk-*.json
+
 # Widget Preview related
 .widget_preview/

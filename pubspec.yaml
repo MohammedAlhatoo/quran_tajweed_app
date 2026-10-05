@@ -57,6 +57,9 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  googleapis_auth: ^2.3.4
+  args: ^2.7.0
+  http: ^1.6.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -72,6 +75,12 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    - assets/quran/data/hafsData_v18.json
+
+  fonts:
+    - family: UthmanicHafs
+      fonts:
+        - asset: assets/fonts/hafs.18.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -372,7 +372,7 @@ const juz25To30Segments = <ExamSegmentSeed>[
     'hamzat_qat',
   ]),
   // البلد
-  _S(90, 6, 19, 594, 1.58, [
+  _S(90, 6, 18, 594, 1.53, [
     'nun_idgham_bi_ghunnah', 'nun_idgham_bila_ghunnah', 'nun_ikhfa_haqiqi',
     'nun_idgham_naqis', 'nun_idgham_kamil', 'mim_izhar_shafawi',
     'ghunnah_nun_mushaddadah', 'ghunnah_mim_mushaddadah', 'lam_shamsiyyah',
@@ -382,21 +382,19 @@ const juz25To30Segments = <ExamSegmentSeed>[
     'madd_lin', 'hamzat_wasl', 'hamzat_qat',
   ]),
   // العلق
-  _S(96, 6, 19, 597, 1.58, [
-    'nun_izhar_halqi', 'nun_idgham_bila_ghunnah', 'nun_iqlab',
-    'nun_ikhfa_haqiqi', 'nun_idgham_kamil', 'mim_izhar_shafawi',
-    'mim_ikhfa_shafawi', 'ghunnah_nun_mushaddadah', 'lam_shamsiyyah',
-    'lam_qamariyyah', 'lam_jalalah_tafkhim', 'ra_tafkhim', 'ra_tarqiq',
-    'qalqalah_sughra', 'qalqalah_kubra', 'madd_tabii', 'madd_munfasil',
-    'madd_badal', 'hamzat_wasl', 'hamzat_qat',
+  _S(96, 1, 12, 597, 1.58, [
+    'nun_izhar_halqi', 'nun_idgham_bila_ghunnah', 'nun_ikhfa_haqiqi',
+    'nun_idgham_kamil', 'mim_izhar_shafawi', 'ghunnah_nun_mushaddadah',
+    'lam_shamsiyyah', 'lam_qamariyyah', 'ra_tafkhim', 'qalqalah_sughra',
+    'qalqalah_kubra', 'madd_tabii', 'madd_munfasil', 'madd_badal',
+    'hamzat_wasl', 'hamzat_qat',
   ]),
   // البينة
-  _S(98, 2, 6, 598, 1.63, [
+  _S(98, 1, 5, 598, 1.52, [
     'nun_izhar_halqi', 'nun_idgham_bi_ghunnah', 'nun_iqlab', 'nun_ikhfa_haqiqi',
-    'nun_idgham_kamil', 'mim_izhar_shafawi', 'ghunnah_nun_mushaddadah',
-    'lam_shamsiyyah', 'lam_qamariyyah', 'lam_jalalah_tafkhim', 'ra_tafkhim',
-    'ra_tarqiq', 'madd_tabii', 'madd_muttasil', 'madd_munfasil', 'madd_badal',
-    'hamzat_wasl', 'hamzat_qat',
+    'nun_idgham_kamil', 'mim_izhar_shafawi', 'lam_shamsiyyah', 'lam_qamariyyah',
+    'lam_jalalah_tafkhim', 'ra_tafkhim', 'ra_tarqiq', 'madd_tabii',
+    'madd_muttasil', 'madd_munfasil', 'madd_badal', 'hamzat_wasl', 'hamzat_qat',
   ]),
   // الهمزة
   _S(104, 1, 9, 601, 1.15, [

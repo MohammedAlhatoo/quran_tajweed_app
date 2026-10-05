@@ -69,6 +69,23 @@ void main() {
         expect(course.description, isNotEmpty);
       }
     });
+
+    test('write their objectives, which may be empty', () {
+      for (final seed in courseSeeds) {
+        expect(seed.objectives, hasLength(3));
+        expect(seed.toMap()['objectives'], seed.objectives);
+      }
+      const seed = CourseSeed(
+        CourseLevel.introductory,
+        'تمهيدية',
+        'وصف',
+        objectives: ['هدف أول', 'هدف ثانٍ'],
+      );
+
+      final course = Course.fromMap(seed.id, seed.toMap())!;
+
+      expect(course.objectives, ['هدف أول', 'هدف ثانٍ']);
+    });
   });
 
   group('tajweed rules', () {
@@ -619,15 +636,31 @@ void main() {
       store.docs(FirebaseCollections.courses)['course-1'] = {
         'name': 'الدورة التمهيدية',
         'level': 'introductory',
-        'isActive': true,
+        'isActive': false,
       };
 
       final result = await CurriculumSeeder(store).seed();
 
       final courses = store.docs(FirebaseCollections.courses);
+      final seed = courseSeeds.first;
       expect(result.coursesCreated, 3);
+      expect(result.coursesUpdated, 1);
       expect(courses, isNot(contains('introductory')));
-      expect(courses['course-1']!['name'], 'الدورة التمهيدية');
+      // Its definition is brought up to date; its isActive is kept.
+      expect(courses['course-1'], {
+        'name': seed.name,
+        'description': seed.description,
+        'level': 'introductory',
+        'objectives': seed.objectives,
+        'isActive': false,
+        'updatedAt': 'now',
+      });
+      expect(result.documentIds[FirebaseCollections.courses], {
+        'course-1',
+        'qualifying',
+        'advanced',
+        'sanad',
+      });
       expect(
         store
             .docs(FirebaseCollections.courseRules)

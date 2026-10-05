@@ -57,6 +57,7 @@ import '../features/home/presentation/pages/home_page.dart';
 import '../features/questions/domain/repositories/questions_repository.dart';
 import '../features/questions/presentation/pages/questions_page.dart';
 import '../features/questions/presentation/state/questions_cubit.dart';
+import '../features/quran/domain/repositories/quran_repository.dart';
 import '../features/student/domain/repositories/student_profile_repository.dart';
 import '../features/student/presentation/pages/personal_info_page.dart';
 import '../features/student/presentation/pages/profile_page.dart';
@@ -293,7 +294,9 @@ abstract final class AppRouter {
             BlocProvider(
               create: (context) => CourseDetailsCubit(
                 context.read<CoursesRepository>(),
+                context.read<ExamsRepository>(),
                 state.pathParameters['courseId']!,
+                _user(authCubit)?.uid ?? '',
               )..load(),
             ),
             BlocProvider(
@@ -311,6 +314,7 @@ abstract final class AppRouter {
             BlocProvider(
               create: (context) => ExamCubit(
                 context.read<ExamsRepository>(),
+                context.read<QuranRepository>(),
                 state.pathParameters['examId']!,
               )..load(),
             ),

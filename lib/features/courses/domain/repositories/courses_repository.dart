@@ -1,4 +1,5 @@
 import '../entities/course.dart';
+import '../entities/tajweed_rule.dart';
 
 /// All methods throw `AppFailure` on error.
 abstract interface class CoursesRepository {
@@ -8,6 +9,6 @@ abstract interface class CoursesRepository {
   /// Returns null when the course does not exist or is not active.
   Future<Course?> fetchCourse(String courseId);
 
-  /// The names of the Tajweed rules linked to the course.
-  Future<List<String>> fetchCourseRuleNames(String courseId);
+  /// The Tajweed rules linked to the course through `course_rules`.
+  Future<List<TajweedRule>> fetchCourseRules(String courseId);
 }

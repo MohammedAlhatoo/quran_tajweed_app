@@ -15,8 +15,18 @@ class Course {
   final String description;
   final CourseLevel level;
 
-  /// Optional learning objectives shown on the course details screen.
+  /// The learning objectives shown on the course details screen. May be
+  /// empty.
   final List<String> objectives;
+
+  /// The fields of the `courses` document that describe the course, without
+  /// `isActive` and its timestamps.
+  Map<String, Object?> toMap() => {
+    'name': name,
+    'description': description,
+    'level': level.value,
+    'objectives': objectives,
+  };
 
   /// Returns null when the document has no valid level.
   static Course? fromMap(String id, Map<String, dynamic> data) {

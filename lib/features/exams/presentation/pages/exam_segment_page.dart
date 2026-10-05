@@ -13,6 +13,7 @@ import '../../domain/entities/exam_status.dart';
 import '../../../../router/route_names.dart';
 import '../../../questions/presentation/state/questions_cubit.dart';
 import '../../../questions/presentation/widgets/exam_action_button.dart';
+import '../../../quran/presentation/widgets/segment_text.dart';
 import '../state/exam_cubit.dart';
 import '../state/recording_cubit.dart';
 import '../widgets/mushaf_frame.dart';
@@ -52,7 +53,7 @@ class ExamSegmentPage extends StatelessWidget {
               message: message,
               onRetry: context.read<ExamCubit>().load,
             ),
-            ExamLoaded(:final exam, :final segment) => Column(
+            ExamLoaded(:final exam, :final segment, :final ayahs) => Column(
               children: [
                 Expanded(
                   child: SafeArea(
@@ -64,7 +65,13 @@ class ExamSegmentPage extends StatelessWidget {
                       ),
                       child: MushafFrame(
                         page: segment.page,
-                        child: const _SegmentTextUnavailable(),
+                        // Centered when it is shorter than the page, scrolled
+                        // when it is longer.
+                        child: Center(
+                          child: SingleChildScrollView(
+                            child: SegmentText(ayahs: ayahs),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -146,31 +153,6 @@ class _QuestionsEntry extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-/// Stands in for the segment text until the approved Quran text and font are
-/// added to the app. No Quran text is rendered from any other source.
-class _SegmentTextUnavailable extends StatelessWidget {
-  const _SegmentTextUnavailable();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          'نص المقطع غير متاح بعد.\nاقرأ المقطع المحدد أعلاه من المصحف.',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.cairo(
-            size: 13,
-            weight: FontWeight.w500,
-            color: AppColors.mushafPageNumber,
-            lineHeight: 22,
-          ),
-        ),
-      ),
     );
   }
 }

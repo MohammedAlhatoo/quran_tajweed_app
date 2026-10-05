@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 import '../../../../core/constants/firebase_collections.dart';
 import '../../../exams/data/seed/exam_segments_seed.dart';
 import '../../../questions/data/seed/question_bank_seed.dart';
@@ -26,6 +24,7 @@ abstract interface class SeedStore {
 class CurriculumSeedResult {
   const CurriculumSeedResult({
     required this.coursesCreated,
+    required this.coursesUpdated,
     required this.rulesCreated,
     required this.rulesUpdated,
     required this.courseRulesCreated,
@@ -34,9 +33,11 @@ class CurriculumSeedResult {
     required this.answersWritten,
     required this.segmentsCreated,
     required this.segmentsUpdated,
+    required this.documentIds,
   });
 
   final int coursesCreated;
+  final int coursesUpdated;
   final int rulesCreated;
   final int rulesUpdated;
   final int courseRulesCreated;
@@ -49,8 +50,14 @@ class CurriculumSeedResult {
   final int segmentsCreated;
   final int segmentsUpdated;
 
+  /// The IDs of the documents that make up the curriculum, by collection,
+  /// whether this run wrote them or found them up to date. A stored document
+  /// of these collections whose ID is not here is not part of the curriculum.
+  final Map<String, Set<String>> documentIds;
+
   bool get wroteNothing =>
       coursesCreated +
+          coursesUpdated +
           rulesCreated +
           rulesUpdated +
           courseRulesCreated +
@@ -81,22 +88,34 @@ class CurriculumSeeder {
     final segments = await _seedSegments(courses.ids, rules.ids);
     return CurriculumSeedResult(
       coursesCreated: courses.created,
+      coursesUpdated: courses.updated,
       rulesCreated: rules.created,
       rulesUpdated: rules.updated,
-      courseRulesCreated: links,
+      courseRulesCreated: links.created,
       questionsCreated: questions.created,
       questionsUpdated: questions.updated,
       answersWritten: questions.answers,
       segmentsCreated: segments.created,
       segmentsUpdated: segments.updated,
+      documentIds: {
+        FirebaseCollections.courses: {...courses.ids.values},
+        FirebaseCollections.tajweedRules: {...rules.ids.values},
+        FirebaseCollections.courseRules: links.ids,
+        FirebaseCollections.questionBank: questions.ids,
+        FirebaseCollections.questionAnswers: questions.ids,
+        FirebaseCollections.examSegments: segments.ids,
+      },
     );
   }
 
-  /// An existing course of a level is kept as it is, under its own ID.
-  Future<({Map<CourseLevel, String> ids, int created})> _seedCourses() async {
+  /// An existing course of a level keeps its ID and its `isActive`; its
+  /// definition is brought up to date.
+  Future<({Map<CourseLevel, String> ids, int created, int updated})>
+  _seedCourses() async {
     final existing = await _store.readAll(FirebaseCollections.courses);
     final ids = <CourseLevel, String>{};
     final writes = <String, Map<String, Object?>>{};
+    var created = 0;
     for (final seed in courseSeeds) {
       final existingId = existing.entries
           .where((entry) => entry.value['level'] == seed.level.value)
@@ -104,15 +123,25 @@ class CurriculumSeeder {
           ?.key;
       ids[seed.level] = existingId ?? seed.id;
       if (existingId == null) {
+        created++;
         writes[seed.id] = {
           ...seed.toMap(),
           'createdAt': _store.timestamp,
           'updatedAt': _store.timestamp,
         };
+        continue;
+      }
+      final stored = existing[existingId]!;
+      final definition = seed.toMap()..remove('isActive');
+      final changed = definition.entries.any(
+        (field) => !_sameValue(stored[field.key], field.value),
+      );
+      if (changed) {
+        writes[existingId] = {...definition, 'updatedAt': _store.timestamp};
       }
     }
     await _store.writeAll(FirebaseCollections.courses, writes);
-    return (ids: ids, created: writes.length);
+    return (ids: ids, created: created, updated: writes.length - created);
   }
 
   /// An existing rule keeps its ID and its `isActive`; its definition is
@@ -158,21 +187,33 @@ class CurriculumSeeder {
 
   /// An existing link is left untouched, so a weight adjusted by hand
   /// survives a new run.
-  Future<int> _seedCourseRules(
+  Future<({Set<String> ids, int created})> _seedCourseRules(
     Map<CourseLevel, String> courseIds,
     Map<String, String> ruleIds,
   ) async {
     final existing = await _store.readAll(FirebaseCollections.courseRules);
-    final linked = {
-      for (final data in existing.values)
-        '${data['courseId']}|${data['ruleId']}',
-    };
+    // The document that holds each link, by `courseId|ruleId`.
+    final linked = <String, String>{};
+    for (final entry in existing.entries) {
+      linked.putIfAbsent(
+        '${entry.value['courseId']}|${entry.value['ruleId']}',
+        () => entry.key,
+      );
+    }
+    final ids = <String>{};
     final writes = <String, Map<String, Object?>>{};
     for (final seed in courseRuleSeeds) {
       final courseId = courseIds[seed.level]!;
       final ruleId = ruleIds[seed.ruleId]!;
-      if (!linked.add('$courseId|$ruleId')) continue;
-      writes['${courseId}_$ruleId'] = {
+      final storedId = linked['$courseId|$ruleId'];
+      if (storedId != null) {
+        ids.add(storedId);
+        continue;
+      }
+      final id = '${courseId}_$ruleId';
+      linked['$courseId|$ruleId'] = id;
+      ids.add(id);
+      writes[id] = {
         'courseId': courseId,
         'ruleId': ruleId,
         'weight': seed.weight,
@@ -180,17 +221,19 @@ class CurriculumSeeder {
       };
     }
     await _store.writeAll(FirebaseCollections.courseRules, writes);
-    return writes.length;
+    return (ids: ids, created: writes.length);
   }
 
   /// A question is written once for every course that covers its rule, under
   /// `{courseId}_{key}`, and its correct answer under the same ID in
   /// `question_answers` only. An existing question keeps its `isActive`; its
   /// definition and its answer are brought up to date.
-  Future<({int created, int updated, int answers})> _seedQuestions(
+  Future<({Set<String> ids, int created, int updated, int answers})>
+  _seedQuestions(
     Map<CourseLevel, String> courseIds,
     Map<String, String> ruleIds,
   ) async {
+    final ids = <String>{};
     final existing = await _store.readAll(FirebaseCollections.questionBank);
     final existingAnswers = await _store.readAll(
       FirebaseCollections.questionAnswers,
@@ -202,6 +245,7 @@ class CurriculumSeeder {
       final courseId = courseIds[course.level]!;
       for (final seed in questionsOfLevel(course.level)) {
         final id = '${courseId}_${seed.key}';
+        ids.add(id);
         if (existingAnswers[id]?['correctAnswer'] != seed.correctAnswer) {
           answers[id] = seed.answerToMap();
         }
@@ -234,6 +278,7 @@ class CurriculumSeeder {
     await _store.writeAll(FirebaseCollections.questionAnswers, answers);
     await _store.writeAll(FirebaseCollections.questionBank, questions);
     return (
+      ids: ids,
       created: created,
       updated: questions.length - created,
       answers: answers.length,
@@ -243,7 +288,7 @@ class CurriculumSeeder {
   /// A segment is written under the ID of its reference, linked to the courses
   /// it is given in and to the rules that have a place in it. An existing
   /// segment keeps its `isActive`; its definition is brought up to date.
-  Future<({int created, int updated})> _seedSegments(
+  Future<({Set<String> ids, int created, int updated})> _seedSegments(
     Map<CourseLevel, String> courseIds,
     Map<String, String> ruleIds,
   ) async {
@@ -271,13 +316,21 @@ class CurriculumSeeder {
       if (changed) writes[seed.id] = definition;
     }
     await _store.writeAll(FirebaseCollections.examSegments, writes);
-    return (created: created, updated: writes.length - created);
+    return (
+      ids: {for (final seed in examSegmentSeeds) seed.id},
+      created: created,
+      updated: writes.length - created,
+    );
   }
 
   /// Lists are compared by their items: a list read from the store is never
   /// the list of the seed itself.
-  static bool _sameValue(Object? stored, Object? seed) =>
-      stored is List && seed is List
-      ? listEquals(stored, seed)
-      : stored == seed;
+  static bool _sameValue(Object? stored, Object? seed) {
+    if (stored is! List || seed is! List) return stored == seed;
+    if (stored.length != seed.length) return false;
+    for (var i = 0; i < seed.length; i++) {
+      if (stored[i] != seed[i]) return false;
+    }
+    return true;
+  }
 }

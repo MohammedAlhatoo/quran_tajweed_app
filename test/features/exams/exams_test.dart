@@ -11,6 +11,8 @@ import 'package:quran_tajweed_app/features/exams/presentation/state/exam_cubit.d
 import 'package:quran_tajweed_app/features/exams/presentation/state/exam_history_cubit.dart';
 import 'package:quran_tajweed_app/features/exams/presentation/state/start_exam_cubit.dart';
 import 'package:quran_tajweed_app/features/questions/domain/entities/question.dart';
+import 'package:quran_tajweed_app/features/quran/domain/entities/quran_ayah.dart';
+import 'package:quran_tajweed_app/features/quran/domain/repositories/quran_repository.dart';
 
 const _student = AppUser(
   uid: 'uid-1',
@@ -79,12 +81,47 @@ class _FakeExamsRepository implements ExamsRepository {
   }
 }
 
+/// Gives made-up ayahs for any range, and keeps the ranges asked for.
+class _FakeQuranRepository implements QuranRepository {
+  QuranDataException? failure;
+  final asked = <(int, int, int)>[];
+
+  @override
+  Future<List<QuranAyah>> ayahsOf(int surah, int from, int to) async {
+    asked.add((surah, from, to));
+    if (failure case final failure?) throw failure;
+    return [
+      for (var ayah = from; ayah <= to; ayah++)
+        QuranAyah(
+          surah: surah,
+          ayah: ayah,
+          page: 2,
+          juz: 1,
+          lineStart: ayah,
+          lineEnd: ayah,
+          text: 'text $surah:$ayah',
+          textEmlaey: 'plain $surah:$ayah',
+        ),
+    ];
+  }
+
+  @override
+  Future<QuranAyah> ayah(int surah, int ayah) => throw UnimplementedError();
+
+  @override
+  Future<List<QuranAyah>> ayahsOfPage(int page) => throw UnimplementedError();
+}
+
 DateTime? _noDate(Object? value) => null;
 
 void main() {
   late _FakeExamsRepository repository;
+  late _FakeQuranRepository quran;
 
-  setUp(() => repository = _FakeExamsRepository());
+  setUp(() {
+    repository = _FakeExamsRepository();
+    quran = _FakeQuranRepository();
+  });
 
   group('ExamStatus', () {
     test('open statuses can be continued', () {
@@ -196,7 +233,7 @@ void main() {
 
   group('ExamCubit', () {
     test('load emits the examination with its segment', () async {
-      final cubit = ExamCubit(repository, 'exam-1');
+      final cubit = ExamCubit(repository, quran, 'exam-1');
 
       await cubit.load();
 
@@ -205,16 +242,70 @@ void main() {
       expect(state.segment.id, 'segment-1');
     });
 
+    test('load emits the ayahs of the segment, in order', () async {
+      final cubit = ExamCubit(repository, quran, 'exam-1');
+
+      await cubit.load();
+
+      final state = cubit.state as ExamLoaded;
+      expect(quran.asked, [(2, 1, 5)]);
+      expect(
+        [for (final ayah in state.ayahs) (ayah.surah, ayah.ayah)],
+        [(2, 1), (2, 2), (2, 3), (2, 4), (2, 5)],
+      );
+      expect(state.ayahs.first.text, 'text 2:1');
+    });
+
+    test('load emits an error when the Quran data cannot be read', () async {
+      quran.failure = const QuranDataException('no file');
+      final cubit = ExamCubit(repository, quran, 'exam-1');
+
+      await cubit.load();
+
+      expect((cubit.state as ExamError).message, 'تعذّر تحميل نص المقطع.');
+    });
+
+    test('load again shows the examination once the data is read', () async {
+      quran.failure = const QuranDataException('no file');
+      final cubit = ExamCubit(repository, quran, 'exam-1');
+      await cubit.load();
+      expect(cubit.state, isA<ExamError>());
+
+      quran.failure = null;
+      await cubit.load();
+
+      expect((cubit.state as ExamLoaded).ayahs, hasLength(5));
+    });
+
+    test('load does not read the Quran data without a segment', () async {
+      repository.segment = null;
+      final cubit = ExamCubit(repository, quran, 'exam-1');
+
+      await cubit.load();
+
+      expect(cubit.state, isA<ExamError>());
+      expect(quran.asked, isEmpty);
+    });
+
+    test('load emits the message of a failed reading', () async {
+      repository.failure = const AppFailure('تعذّر الاتصال.');
+      final cubit = ExamCubit(repository, quran, 'exam-1');
+
+      await cubit.load();
+
+      expect((cubit.state as ExamError).message, 'تعذّر الاتصال.');
+    });
+
     test('load emits an error for a missing examination or segment', () async {
       repository.exam = null;
-      final missingExam = ExamCubit(repository, 'exam-1');
+      final missingExam = ExamCubit(repository, quran, 'exam-1');
       await missingExam.load();
       expect(missingExam.state, isA<ExamError>());
 
       repository
         ..exam = _exam
         ..segment = null;
-      final missingSegment = ExamCubit(repository, 'exam-1');
+      final missingSegment = ExamCubit(repository, quran, 'exam-1');
       await missingSegment.load();
       expect(missingSegment.state, isA<ExamError>());
     });

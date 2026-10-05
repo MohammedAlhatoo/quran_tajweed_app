@@ -127,7 +127,7 @@ class _FakeCoursesRepository implements CoursesRepository {
   );
 
   @override
-  Future<List<String>> fetchCourseRuleNames(String courseId) async => const [];
+  Future<List<TajweedRule>> fetchCourseRules(String courseId) async => const [];
 }
 
 class _FakePlayer implements RecitationPlayer {

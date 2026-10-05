@@ -41,7 +41,7 @@ The following decisions are approved and take priority over any other wording in
 16. **Examination affiliation:** Each `exams` document stores the student's `mosqueId`, `squareId`, and `regionId` at the time the examination is started.
 17. **Examination limits:** A student has at most one open examination per course; starting again continues it with the same segment and questions. A new examination in a course cannot be started while one in that course is awaiting review. Examinations have no time limit.
 18. **Segment selection algorithm:** Among the active segments of the course, each segment's weight is `ruleDensity × the sum of the weights (from course_rules) of the course rules present in the segment`. One segment is chosen at random with probability proportional to its weight. Segments with zero weight are not eligible.
-19. **Quran text and font:** No Quran text file or Mushaf font is added without explicit approval of its source. Until an approved text and font are added, the examination screen shows the segment reference without the ayah text.
+19. **Quran text and font:** No Quran text file or Mushaf font is added without explicit approval of its source. The approved source is the Uthmanic Hafs release, version 0.18, of the King Fahd Complex for the Printing of the Holy Quran (KFGQPC): the text and the font come from that same release and from no other source. The files were supplied by the project owner and are kept as they are, under their original names: `assets/quran/data/hafsData_v18.json`, `assets/fonts/hafs.18.ttf` and the release's own `assets/quran/source/README.md`. The whole Quran is bundled, not only the examination segments. `aya_text` is never corrected, normalized or changed in any way, and is shown only in that font. The examination screen shows the text of the segment line by line, each ayah on the Mushaf lines the data gives it (`page`, `line_start`, `line_end`), inside the existing Mushaf frame; no page image, ornament, or ayah mark beyond what `aya_text` holds is added.
 
 ---
 
@@ -774,6 +774,7 @@ courses/{courseId}
 name
 description
 level
+objectives    (list of strings, may be empty)
 isActive
 createdAt
 updatedAt
@@ -1137,6 +1138,7 @@ lib/
 │   ├── exams/
 │   ├── courses/
 │   ├── questions/
+│   ├── quran/
 │   ├── supervisor/
 │   ├── region/
 │   ├── admin/
@@ -1169,7 +1171,7 @@ The architecture should avoid putting business logic directly inside UI widgets.
 
 # 39. Core Structure
 
-The initial core structure is:
+The core structure is:
 
 ```text
 core/
@@ -1182,7 +1184,8 @@ core/
 ├── constants/
 │   ├── app_constants.dart
 │   ├── firebase_collections.dart
-│   └── app_assets.dart
+│   ├── app_assets.dart
+│   └── surah_names.dart
 │
 ├── widgets/
 │   ├── app_button.dart
@@ -1191,14 +1194,16 @@ core/
 │
 ├── services/
 │   ├── auth_service.dart
-│   ├── firestore_service.dart
-│   ├── storage_service.dart
-│   └── notification_service.dart
+│   ├── account_creation_service.dart
+│   └── storage_service.dart
 │
 └── utils/
     ├── validators.dart
-    └── helpers.dart
+    ├── helpers.dart
+    └── app_failure.dart
 ```
+
+There is no `firestore_service.dart` and no `notification_service.dart`: Firestore is reached through the repositories of each feature, and notifications are in-app records written and read by the repositories of the features that use them.
 
 Only reusable and genuinely shared components should be placed in `core`.
 
@@ -1617,12 +1622,12 @@ Phase 1 decisions approved (see "Approved Phase 1 Decisions").
 Phase 2 and Phase 3 are Future Work only.
 Project analysis completed (Implementation Order step 1).
 Architecture confirmed (Implementation Order step 2).
-Implementation Order steps 3-14 implemented.
+Implementation Order steps 3-15 implemented.
 AI is not part of Phase 1.
 Figma MCP is connected to Claude Code.
 ```
 
-Open items: the approved Quran text and Mushaf font have not been added, and Cloud Functions are deferred (see Approved Phase 1 Decisions 14 and 19).
+Open items: Cloud Functions are deferred (see Approved Phase 1 Decision 14). The approved Quran text and Mushaf font are added (see Approved Phase 1 Decision 19 and "Quran content" below).
 
 Recording (step 10): the recitation is uploaded to `exam_recordings/{examId}/recitation.m4a`, and re-recording is allowed while the examination is `in_progress`. `recordingUrl` is written to `submissions` in step 12. `storage.rules` is not deployed yet, and recording has not been tested on a device.
 
@@ -1630,7 +1635,7 @@ Theory Questions (step 11): the ten questions are read from `exam_questions` and
 
 Submission (step 12): the student reviews the recording status and the ten answers, then submits. One batch creates `submissions/{examId}` and moves the examination from `in_progress` to `pending_review` with `submittedAt`. `recordingUrl` holds the Storage path of the recording, not a download link. Each item of `answers` is `{order, questionId, answer}`. The review and confirmation screens have no Figma frame and follow the style of the questions screen. Deferred to step 13: creating the `evaluations` record and calculating `theoryScore`, because the student can neither read `question_answers` nor write `evaluations` and Cloud Functions are deferred. The updated `firestore.rules` are not deployed yet, and submission has not been tested against Firebase.
 
-Supervisor Review (step 13): the supervisor's home lists the examinations of the square that await review, oldest submission first. Opening one shows the student, the course, the segment reference, the recitation (downloaded from Storage, then played) and the ten answers, each marked against its correct answer. The supervisor enters the recitation score out of 80; the theory score out of 20 is calculated from the student's answers and `question_answers` (two marks per question), and the final score out of 100 and the result (pass mark 70) are shown. Approving the result writes one batch: it creates `evaluations/{examId}` with `status = approved` and moves the examination to `approved` with `reviewedAt` and `approvedAt`. Differences from section 33, by decision: the `evaluations` record is created when the supervisor approves, not when the student submits, so no `pending` evaluation exists; `feedback` is stored as null because no feedback field is shown yet. No examination is moved to `under_review`. Interim limit: the theory score is calculated on the supervisor's device, so an active supervisor can read `question_answers` one document at a time, and the security rules check the range and the arithmetic of the scores but not that `theoryScore` matches the answers. The supervisor screens were built in the style of the existing screens, without inspecting Figma, because the Figma MCP call limit was reached; they must be compared with the approved frames later. Not built: Supervisor Dashboard statistics, Student History, the student's result screen. The updated `firestore.rules` and `storage.rules` are not deployed yet, and the module has not been tested against Firebase or on a device.
+Supervisor Review (step 13): the supervisor's home lists the examinations of the square that await review, oldest submission first. Opening one shows the student, the course, the segment reference, the recitation (downloaded from Storage, then played) and the ten answers, each marked against its correct answer. The supervisor enters the recitation score out of 80; the theory score out of 20 is calculated from the student's answers and `question_answers` (two marks per question), and the final score out of 100 and the result (pass mark 70) are shown. Approving the result writes one batch: it creates `evaluations/{examId}` with `status = approved` and moves the examination to `approved` with `reviewedAt` and `approvedAt`. Differences from section 33, by decision: the `evaluations` record is created when the supervisor approves, not when the student submits, so no `pending` evaluation exists. The supervisor's `feedback` and `detailedErrors` are written with the evaluation as section 33 describes. No examination is moved to `under_review`. Interim limit: the theory score is calculated on the supervisor's device, so an active supervisor can read `question_answers` one document at a time, and the security rules check the range and the arithmetic of the scores but not that `theoryScore` matches the answers. The supervisor screens were built in the style of the existing screens, without inspecting Figma, because the Figma MCP call limit was reached; they must be compared with the approved frames later. Not built: Supervisor Dashboard statistics, Student History. The student's result screen was added in step 14. The updated `firestore.rules` and `storage.rules` are not deployed yet, and the module has not been tested against Firebase or on a device.
 
 Step 14 (notifications, certificates, administration, reports): everything is done from the application, without Cloud Functions, so every write is checked by the security rules only.
 
@@ -1646,7 +1651,7 @@ Step 15 (Security Rules): `firestore.rules` and `storage.rules` were reviewed an
 
 Not enforceable by the rules alone, without a trusted backend: that `theoryScore` matches the answers; that a supervisor reads only the `question_answers` of their own square's examinations; the random choice of the segment and questions, and that `exam_questions` copy `question_bank`; one open examination per course; that the recording exists when the examination is submitted; one supervisor per square and one officer per region; that a mosque's students move with it; the text of a notification.
 
-The updated rules are not deployed and have not been run against Firebase or the emulator. The next step is Implementation Order step 16.
+The rules are tested locally against the Firebase Emulator Suite: `rules_test/rules.test.mjs`, run with `npm run test:emulator` inside `rules_test`, under the project ID `demo-quran-exam`. All 114 tests pass. These tests never touch a real Firebase project. The updated rules are not deployed and have not been run against the real Firebase project. The next step is Implementation Order step 16.
 
 Question bank content (sections 30 and 13): the theory questions and their answers are defined in the application as seed data (`features/questions/data/seed`) and written by `CurriculumSeeder` after the courses, the Tajweed rules and their links. No screen, security rule, selection or scoring logic changed.
 
@@ -1657,7 +1662,7 @@ Question bank content (sections 30 and 13): the theory questions and their answe
 * Difficulty: `difficulty` is 1 (easy) to 3 (hard) and follows the level that introduces the rule unless a question sets its own. It is stored and read but not used by the selection yet: the selection still takes 10 active questions of the course spread across the rules (section 31). Question category is not stored on the question; it is the category of its rule.
 * Running the seed again adds what is missing, brings a question's definition and answer up to date, and keeps an `isActive` changed by hand.
 
-Limits: the security rules give no client write access to `question_bank` or `question_answers`, so the seed only runs against the emulator or with access the application does not have, and nothing in the application calls it; it has not been run against Firebase. Starting an examination reads every question of the course. Managing the question bank from the application (section 48) is still not built.
+Limits: the security rules give no client write access to `question_bank` or `question_answers`, so the seed only runs against the emulator or with access the application does not have, and nothing in the application calls it; it is run by the seed tool only (see "Seed tool" below). Starting an examination reads every question of the course. Managing the question bank from the application (section 48) is still not built.
 
 Examination segments content (sections 29 and 11): the predefined segments are defined in the application as seed data (`features/exams/data/seed`) and written to `exam_segments` by `CurriculumSeeder` after the question bank. No screen, security rule or selection logic changed; `ExamSegment` now also reads `difficulty`.
 
@@ -1667,7 +1672,30 @@ Examination segments content (sections 29 and 11): the predefined segments are d
 * `ruleDensity`: the number of places of the listed rules in the segment divided by its number of words. It runs from 1.15 to 2.09.
 * `courseIds`: a segment is given in the introductory course and every course above it, unless it holds a place that cannot be read correctly without having been taught it; such a segment starts at the course that introduces that rule. Only these rules do so (`levelRaisingRuleIds`): the five Sakt places inside a surah, Imalah, Tashil, the Ishmam of «تأمنا», the opening of a surah read as letters with the 'Ayn of the two openings, and the question Hamza before the definite article at its six places. A rule of a higher course that is read as the Mushaf writes it does not: it stays in `ruleIds`, so the higher courses weigh it, and the segment stays open to the lower ones. This covers the Alif of «أنا» and the other Alifs dropped when reading on, the Sad of Hafs (`hafs_sad_sin`), the words with two ways, the special Ha' al-Kinayah, the Ra with two ways, and the question Hamza before a verb. This gives 183 segments to the introductory course, 187 to the qualifying, and all 201 to the advanced and the Sanad courses; no segment is for the Sanad course alone.
 * `difficulty`: 1 to 3, following the first course the segment is given in. It is stored and read but not used by the selection, which follows section 11 unchanged.
-* Source of the data: the page of each ayah, the word counts and the places of the rules were worked out by a script outside the project from the Tanzil Uthmani text, the `quran-tajweed` rule annotations (CC BY 4.0) and the page numbering of the Madinah Mushaf. None of these files is part of the project, and decision 19 is unchanged: the examination screen still shows the reference only. The places known by their reference (the Sakt of Hafs, Imalah, Tashil, Ishmam, the Sad read as Sin, the special Ha' al-Kinayah, the question Hamza) were entered by hand. The links have not been reviewed by a Tajweed specialist and must be reviewed before students are examined on them.
+* Source of the data: the page of each ayah, the word counts and the places of the rules were worked out by a script outside the project from the Tanzil Uthmani text, the `quran-tajweed` rule annotations (CC BY 4.0) and the page numbering of the Madinah Mushaf. None of these files is part of the project: they were used only to work out the links of the segments, and the text shown to the student comes from the KFGQPC data alone (decision 19). The places known by their reference (the Sakt of Hafs, Imalah, Tashil, Ishmam, the Sad read as Sin, the special Ha' al-Kinayah, the question Hamza) were entered by hand. The links have not been reviewed by a Tajweed specialist and must be reviewed before students are examined on them.
+* Correction against the Quran data: three segments were moved so that every examination segment lies whole on one page of the KFGQPC Hafs v0.18 data. Their ranges, IDs, `ruleIds` and `ruleDensity` were worked out again by the same method. They are now `s090_006_018` (al-Balad, ayahs 6–18, page 594), `s096_001_012` (al-'Alaq, ayahs 1–12, page 597) and `s098_001_005` (al-Bayyinah, ayahs 1–5, page 598), in place of `s090_006_019`, `s096_006_019` and `s098_002_006`. The number of segments is still 201.
 * Running the seed again adds what is missing, brings a segment's definition up to date, and keeps an `isActive` changed by hand.
 
-Limits: the security rules give no client write access to `exam_segments`, so the seed only runs against the emulator or with access the application does not have, and nothing in the application calls it. Starting an examination reads every segment of the course (up to 201 documents). The Sakt between al-Anfal and al-Tawbah lies between two surahs and is in no segment. The surahs of fewer than 25 words are in no segment.
+Limits: the security rules give no client write access to `exam_segments`, so the seed only runs against the emulator or with access the application does not have, and nothing in the application calls it; it is run by the seed tool only (see "Seed tool" below). Starting an examination reads every segment of the course (up to 201 documents). The Sakt between al-Anfal and al-Tawbah lies between two surahs and is in no segment. The surahs of fewer than 25 words are in no segment.
+
+Quran content (decision 19, sections 7 and 29): the Quran text and its font are bundled with the application, from the KFGQPC Uthmanic Hafs release, version 0.18. No security rule, selection or scoring logic changed.
+
+* Files: `assets/quran/data/hafsData_v18.json` (6236 ayahs, 114 surahs, pages 1 to 604), `assets/fonts/hafs.18.ttf` (registered as the font family `UthmanicHafs`) and `assets/quran/source/README.md`, the description that came with the release. The files are kept as the source publishes them and are not renamed or edited. The licence information of the font is the one embedded in the font file itself; the release states no separate licence for the data file, and none is assumed.
+* Reading: `features/quran` reads the file once, on the first request, and keeps it in memory. An ayah is reached by surah and ayah number, a range of ayahs of one surah, or the ayahs that start on a page. The surah field of the file is named `sora` and is read as it is. Each ayah carries its page, Juz, first and last line on the page, `aya_text` and `aya_text_emlaey`; the latter is for search only and is never shown as Quran text. A request that cannot be answered whole fails; no part of it is returned.
+* Display: the student's examination screen shows the ayahs of the segment inside the existing Mushaf frame, line by line. An ayah starts on its `line_start` and ends on its `line_end`; the data does not say where the words of a longer ayah break, so the breaks in between are placed where the lines come out closest in width. A line that is nearly full is stretched by widening its spaces only, the text is made smaller when the widest line does not fit, and a line never wraps. The text is shown in its own font and inherits nothing from the application theme. Nothing is added to the text but a space between two ayahs that share a line. When the text cannot be read, the examination screen shows an error with a retry instead of the examination.
+* Verification: tests check the data file (6236 ayahs in order, the 114 surahs each with all its ayahs, pages 1 to 604 and Juz 1 to 30 never going back, valid lines, no empty text) and that each of the 201 examination segments lies whole on its recorded page in this data.
+* Not built: the supervisor's review screen still shows the reference of the segment without its text.
+
+Course Details (section 45): the screen was rebuilt from the approved Figma frame. No security rule, selection or scoring logic changed.
+
+* It shows the course, the approved name of its level (`تمهيدية`, `تأهيلية`, `عليا`, `السند`), its objectives, the examination information (the number of theory questions, the recitation and theory marks, the pass mark, and that the recitation is recorded inside the examination) and the Tajweed rules of the course grouped by chapter, each chapter opened on tap.
+* `courses.objectives` is written by the seed, three objectives for each course. Running the seed again brings the definition of an existing course up to date and keeps its ID and its `isActive`.
+* The button follows the student's examinations of the course (section 15): it starts an examination, continues the open one, or is disabled with a notice while one awaits review. When the student's examinations cannot be read the course is still shown, and starting an examination makes the same checks again.
+
+Seed tool: `tool/seed_curriculum.dart` runs `CurriculumSeeder` outside the application, over the Firestore REST API, with the Application Default Credentials of the machine or, when `FIRESTORE_EMULATOR_HOST` is set, against the emulator without credentials.
+
+* `--dry-run` reads Firestore and reports what would be created and updated in `courses`, `tajweed_rules`, `course_rules`, `question_bank`, `question_answers` and `exam_segments`; it writes nothing. `--apply` writes the same plan. Exactly one of the two must be given, with `--project`.
+* It only adds documents and merges fields; it has no way to delete. Stored documents of these collections that are not part of the curriculum are reported and left alone.
+* Credentials are kept outside the project and are never committed; `.gitignore` refuses service-account key files.
+* The development dependencies `args`, `googleapis_auth` and `http` were added for this tool only. They are not part of the application.
+* Applying the seed to the real Firebase project is a separate step that needs explicit approval.
