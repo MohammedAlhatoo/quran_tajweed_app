@@ -12,7 +12,10 @@ import '../../../courses/domain/entities/tajweed_rule.dart';
 import '../../../exams/domain/entities/exam.dart';
 import '../../../exams/domain/entities/exam_segment.dart';
 import '../../../exams/domain/entities/recitation_error.dart';
+import '../../../exams/presentation/widgets/mushaf_frame.dart';
 import '../../../questions/presentation/widgets/exam_action_button.dart';
+import '../../../quran/domain/entities/quran_ayah.dart';
+import '../../../quran/presentation/widgets/segment_text.dart';
 import '../../domain/services/exam_scoring.dart';
 import '../state/evaluation_cubit.dart';
 import '../state/exam_review_cubit.dart';
@@ -117,6 +120,17 @@ class _ReviewView extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
+          const _SectionTitle('نص المقطع'),
+          if (review.ayahs.isEmpty)
+            const _Card(
+              child: _Value(
+                'تعذّر تحميل نص المقطع. راجع التلاوة من المصحف حسب المقطع '
+                'المحدد أعلاه.',
+              ),
+            )
+          else
+            _SegmentCard(page: review.segment.page, ayahs: review.ayahs),
+          const SizedBox(height: 24),
           const _SectionTitle('تسجيل التلاوة'),
           _RecordingCard(recordingPath: review.submission.recordingPath),
           const SizedBox(height: 24),
@@ -147,6 +161,31 @@ class _ReviewView extends StatelessWidget {
           else
             const _Card(child: _Value('تم اعتماد نتيجة هذا الاختبار.')),
         ],
+      ),
+    );
+  }
+}
+
+/// The text of the segment in the Mushaf frame, as the student read it.
+class _SegmentCard extends StatelessWidget {
+  const _SegmentCard({required this.page, required this.ayahs});
+
+  final int page;
+  final List<QuranAyah> ayahs;
+
+  /// The frame fills the height it is given, so it gets one here. A longer
+  /// segment is scrolled inside it.
+  static const double _height = 380;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: _height,
+      child: MushafFrame(
+        page: page,
+        child: Center(
+          child: SingleChildScrollView(child: SegmentText(ayahs: ayahs)),
+        ),
       ),
     );
   }

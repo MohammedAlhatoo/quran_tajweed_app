@@ -10,6 +10,8 @@ import '../../../exams/domain/entities/exam_segment.dart';
 import '../../../exams/domain/entities/submission.dart';
 import '../../../exams/domain/repositories/exams_repository.dart';
 import '../../../questions/domain/entities/exam_question.dart';
+import '../../../quran/domain/entities/quran_ayah.dart';
+import '../../../quran/domain/repositories/quran_repository.dart';
 import '../../domain/repositories/review_repository.dart';
 import '../../domain/services/exam_scoring.dart';
 
@@ -31,6 +33,7 @@ class ExamReviewLoaded extends ExamReviewState {
     required this.questions,
     required this.correctAnswers,
     this.rules = const [],
+    this.ayahs = const [],
   });
 
   final Exam exam;
@@ -52,6 +55,10 @@ class ExamReviewLoaded extends ExamReviewState {
   /// The Tajweed rules an error can be recorded against. Empty when they
   /// cannot be read or none are stored.
   final List<TajweedRule> rules;
+
+  /// The ayahs of the segment, in order, from the Quran data in the app. Empty
+  /// when the text cannot be read.
+  final List<QuranAyah> ayahs;
 
   /// The theory score out of 20, or null when it cannot be calculated
   /// because the questions or their correct answers are missing.
@@ -88,12 +95,14 @@ class ExamReviewCubit extends Cubit<ExamReviewState> {
     required this._reviews,
     required this._exams,
     required this._courses,
+    required this._quran,
     required this._examId,
   }) : super(const ExamReviewLoading());
 
   final ReviewRepository _reviews;
   final ExamsRepository _exams;
   final CoursesRepository _courses;
+  final QuranRepository _quran;
   final String _examId;
 
   Future<void> load() async {
@@ -128,10 +137,25 @@ class ExamReviewCubit extends Cubit<ExamReviewState> {
             for (final question in questions) question.questionId,
           ]),
           rules: await _fetchRules(),
+          ayahs: await _fetchAyahs(segment),
         ),
       );
     } on AppFailure catch (failure) {
       emit(ExamReviewError(failure.message));
+    }
+  }
+
+  /// The recitation is reviewed against the reference of the segment when its
+  /// text cannot be read, so the review does not depend on the text.
+  Future<List<QuranAyah>> _fetchAyahs(ExamSegment segment) async {
+    try {
+      return await _quran.ayahsOf(
+        segment.surah,
+        segment.ayahFrom,
+        segment.ayahTo,
+      );
+    } on QuranDataException {
+      return const [];
     }
   }
 

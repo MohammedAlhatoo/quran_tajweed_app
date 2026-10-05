@@ -15,6 +15,8 @@ import 'package:quran_tajweed_app/features/exams/domain/entities/submission_answ
 import 'package:quran_tajweed_app/features/exams/domain/repositories/exams_repository.dart';
 import 'package:quran_tajweed_app/features/exams/domain/services/recitation_audio.dart';
 import 'package:quran_tajweed_app/features/questions/domain/entities/exam_question.dart';
+import 'package:quran_tajweed_app/features/quran/domain/entities/quran_ayah.dart';
+import 'package:quran_tajweed_app/features/quran/domain/repositories/quran_repository.dart';
 import 'package:quran_tajweed_app/features/supervisor/domain/repositories/review_repository.dart';
 import 'package:quran_tajweed_app/features/supervisor/domain/services/exam_scoring.dart';
 import 'package:quran_tajweed_app/features/supervisor/presentation/state/evaluation_cubit.dart';
@@ -128,6 +130,34 @@ class _FakeCoursesRepository implements CoursesRepository {
 
   @override
   Future<List<TajweedRule>> fetchCourseRules(String courseId) async => const [];
+}
+
+class _FakeQuranRepository implements QuranRepository {
+  QuranDataException? failure;
+
+  @override
+  Future<List<QuranAyah>> ayahsOf(int surah, int from, int to) async {
+    if (failure case final failure?) throw failure;
+    return [
+      for (var ayah = from; ayah <= to; ayah++)
+        QuranAyah(
+          surah: surah,
+          ayah: ayah,
+          page: 2,
+          juz: 1,
+          lineStart: 2 + ayah,
+          lineEnd: 2 + ayah,
+          text: 'text $surah:$ayah',
+          textEmlaey: 'plain $surah:$ayah',
+        ),
+    ];
+  }
+
+  @override
+  Future<QuranAyah> ayah(int surah, int ayah) => throw UnimplementedError();
+
+  @override
+  Future<List<QuranAyah>> ayahsOfPage(int page) => throw UnimplementedError();
 }
 
 class _FakePlayer implements RecitationPlayer {
@@ -245,10 +275,12 @@ DateTime? _noDate(Object? value) => null;
 void main() {
   late _FakeExamsRepository exams;
   late _FakeReviewRepository reviews;
+  late _FakeQuranRepository quran;
 
   setUp(() {
     exams = _FakeExamsRepository();
     reviews = _FakeReviewRepository();
+    quran = _FakeQuranRepository();
   });
 
   group('Submission.fromMap', () {
@@ -336,6 +368,7 @@ void main() {
       reviews: reviews,
       exams: exams,
       courses: _FakeCoursesRepository(),
+      quran: quran,
       examId: 'exam-1',
     );
 
@@ -355,6 +388,32 @@ void main() {
       expect(state.correctAnswerTo(_questions.first), 'ب');
       // Seven correct answers out of ten.
       expect(state.theoryScore, 14);
+    });
+
+    test('load emits the ayahs of the segment, in order', () async {
+      final cubit = build();
+
+      await cubit.load();
+
+      final state = cubit.state as ExamReviewLoaded;
+      expect(
+        [for (final ayah in state.ayahs) (ayah.surah, ayah.ayah)],
+        [
+          for (var ayah = _segment.ayahFrom; ayah <= _segment.ayahTo; ayah++)
+            (_segment.surah, ayah),
+        ],
+      );
+    });
+
+    test('the review is still shown when the Quran data fails', () async {
+      quran.failure = const QuranDataException('no data');
+      final cubit = build();
+
+      await cubit.load();
+
+      final state = cubit.state as ExamReviewLoaded;
+      expect(state.ayahs, isEmpty);
+      expect(state.segment.id, 'segment-1');
     });
 
     test('the theory score is unknown without a correct answer', () async {

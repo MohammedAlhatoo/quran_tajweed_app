@@ -519,6 +519,7 @@ abstract final class AppRouter {
                   reviews: context.read<ReviewRepository>(),
                   exams: context.read<ExamsRepository>(),
                   courses: context.read<CoursesRepository>(),
+                  quran: context.read<QuranRepository>(),
                   examId: examId,
                 )..load(),
               ),
