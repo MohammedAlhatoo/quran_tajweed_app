@@ -20,6 +20,10 @@ import '../../domain/services/segment_selector.dart';
 /// and the "one examination per course" checks are not enforced by the
 /// security rules. A trusted backend is meant to replace [startExam] behind
 /// the same [ExamsRepository] interface.
+///
+/// The correct answers are never read here. When the examination is created,
+/// the `snapshotExamAnswerKey` Cloud Function copies them into
+/// `exam_answer_keys`, which students cannot read.
 class FirestoreExamsRepository implements ExamsRepository {
   FirestoreExamsRepository({
     FirebaseFirestore? firestore,

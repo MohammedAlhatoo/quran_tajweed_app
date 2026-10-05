@@ -17,10 +17,9 @@ import '../../../questions/domain/entities/exam_question.dart';
 import '../../domain/repositories/review_repository.dart';
 import '../../domain/services/exam_scoring.dart';
 
-/// Interim implementation: the theory score is calculated on the supervisor's
-/// device and the security rules cannot check it against `question_answers`.
-/// A trusted backend is meant to replace the grading behind the same
-/// [ReviewRepository] interface.
+/// The theory score is never calculated or written here: the `submitExam`
+/// Cloud Function saves it in the evaluation when the student submits, and
+/// the security rules refuse any change to it.
 class FirebaseReviewRepository implements ReviewRepository {
   FirebaseReviewRepository({
     required StorageService storageService,
@@ -144,26 +143,45 @@ class FirebaseReviewRepository implements ReviewRepository {
   }
 
   @override
-  Future<Map<String, String>> fetchCorrectAnswers(
-    List<String> questionIds,
-  ) async {
+  Future<int?> fetchTheoryScore(String examId) async {
     try {
-      // Read one by one by ID: the security rules do not allow listing.
-      final questionAnswers = _firestore.collection(
-        FirebaseCollections.questionAnswers,
-      );
-      final snapshots = await Future.wait([
-        for (final questionId in questionIds)
-          questionAnswers.doc(questionId).get(),
-      ]);
-      return {
-        for (final snapshot in snapshots)
-          if (snapshot.data()?['correctAnswer'] case final String answer)
-            snapshot.id: answer,
-      };
+      final snapshot = await _firestore
+          .collection(FirebaseCollections.evaluations)
+          .doc(examId)
+          .get();
+      final theoryScore = snapshot.data()?['theoryScore'];
+      return theoryScore is int ? theoryScore : null;
     } on FirebaseException catch (e) {
       throw AppFailure.fromFirebase(e);
     }
+  }
+
+  @override
+  Future<Map<int, String>> fetchAnswerKey(String examId) async {
+    try {
+      final snapshot = await _firestore
+          .collection(FirebaseCollections.examAnswerKeys)
+          .doc(examId)
+          .get();
+      return answerKeyFrom(snapshot.data());
+    } on FirebaseException catch (e) {
+      throw AppFailure.fromFirebase(e);
+    }
+  }
+
+  /// The correct answers of an `exam_answer_keys` document, keyed by the
+  /// order of the question. Empty when [data] is null or holds none.
+  static Map<int, String> answerKeyFrom(Map<String, dynamic>? data) {
+    final answers = data?['answers'];
+    return {
+      if (answers is List)
+        for (final answer in answers)
+          if (answer case {
+            'order': final int order,
+            'correctAnswer': final String correctAnswer,
+          })
+            order: correctAnswer,
+    };
   }
 
   @override
@@ -187,25 +205,53 @@ class FirebaseReviewRepository implements ReviewRepository {
     }
   }
 
-  /// The documents created when the result of [exam] is approved, by path:
-  /// the evaluation, the student's notification and, only when the result
-  /// is passed, the certificate.
-  static Map<String, Map<String, dynamic>> approvalDocuments({
-    required Exam exam,
-    required String courseName,
+  /// What the supervisor adds to the pending evaluation of an examination to
+  /// approve its result. [theoryScore] is the saved theory score; it is used
+  /// for the final score and is not among the fields, so it is never written.
+  static Map<String, dynamic> evaluationApproval({
     required String supervisorId,
     required int recitationScore,
     required int theoryScore,
     String? feedback,
     List<RecitationError> errors = const [],
   }) {
+    final finalScore = ExamScoring.finalScore(
+      recitationScore: recitationScore,
+      theoryScore: theoryScore,
+    );
+    return {
+      'supervisorId': supervisorId,
+      'recitationScore': recitationScore,
+      'finalScore': finalScore,
+      'result': ExamScoring.resultOf(finalScore),
+      'feedback': feedback,
+      // Kept inside the evaluation: the errors are written once with it and
+      // read with it. A server timestamp cannot be written inside a list,
+      // so each error carries the time it was recorded on the device.
+      'detailedErrors': [
+        for (final error in errors) error.toMap(fromDate: Timestamp.fromDate),
+      ],
+      'status': 'approved',
+      'reviewedAt': FieldValue.serverTimestamp(),
+      'approvedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  /// The documents created when the result of [exam] is approved, by path:
+  /// the student's notification and, only when the result is passed, the
+  /// certificate.
+  static Map<String, Map<String, dynamic>> approvalDocuments({
+    required Exam exam,
+    required String courseName,
+    required int recitationScore,
+    required int theoryScore,
+  }) {
     final examId = exam.id;
     final finalScore = ExamScoring.finalScore(
       recitationScore: recitationScore,
       theoryScore: theoryScore,
     );
-    final result = ExamScoring.resultOf(finalScore);
-    final passed = result == ExamScoring.passed;
+    final passed = ExamScoring.resultOf(finalScore) == ExamScoring.passed;
     final (
       notificationId,
       notification,
@@ -218,26 +264,6 @@ class FirebaseReviewRepository implements ReviewRepository {
     );
 
     return {
-      // The evaluation shares the examination's ID, so an examination can be
-      // approved only once.
-      '${FirebaseCollections.evaluations}/$examId': {
-        'examId': examId,
-        'supervisorId': supervisorId,
-        'recitationScore': recitationScore,
-        'theoryScore': theoryScore,
-        'finalScore': finalScore,
-        'result': result,
-        'feedback': feedback,
-        // Kept inside the evaluation: the errors are written once with it and
-        // read with it. A server timestamp cannot be written inside a list,
-        // so each error carries the time it was recorded on the device.
-        'detailedErrors': [
-          for (final error in errors) error.toMap(fromDate: Timestamp.fromDate),
-        ],
-        'status': 'approved',
-        'reviewedAt': FieldValue.serverTimestamp(),
-        'approvedAt': FieldValue.serverTimestamp(),
-      },
       '${FirebaseCollections.notifications}/$notificationId': notification,
       // A failed examination never gets a certificate.
       if (passed)
@@ -269,15 +295,24 @@ class FirebaseReviewRepository implements ReviewRepository {
         'reviewedAt': FieldValue.serverTimestamp(),
         'approvedAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      })
+      // An update, never a creation: only an examination that was submitted
+      // and graded has an evaluation to approve, and it is approved once.
+      ..update(
+        _firestore.collection(FirebaseCollections.evaluations).doc(exam.id),
+        evaluationApproval(
+          supervisorId: supervisorId,
+          recitationScore: recitationScore,
+          theoryScore: theoryScore,
+          feedback: feedback,
+          errors: errors,
+        ),
+      );
     final documents = approvalDocuments(
       exam: exam,
       courseName: courseName,
-      supervisorId: supervisorId,
       recitationScore: recitationScore,
       theoryScore: theoryScore,
-      feedback: feedback,
-      errors: errors,
     );
     for (final MapEntry(key: path, value: data) in documents.entries) {
       batch.set(_firestore.doc(path), data);

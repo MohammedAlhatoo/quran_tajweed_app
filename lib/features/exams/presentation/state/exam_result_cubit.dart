@@ -7,6 +7,7 @@ import '../../../courses/domain/entities/course.dart';
 import '../../../courses/domain/repositories/courses_repository.dart';
 import '../../domain/entities/evaluation.dart';
 import '../../domain/entities/exam.dart';
+import '../../domain/entities/exam_status.dart';
 import '../../domain/repositories/evaluations_repository.dart';
 import '../../domain/repositories/exams_repository.dart';
 
@@ -69,7 +70,11 @@ class ExamResultCubit extends Cubit<ExamResultState> {
         emit(const ExamResultError('هذا الاختبار غير موجود.'));
         return;
       }
-      final evaluation = await _evaluations.fetchEvaluation(_examId);
+      // Before the approval the evaluation holds only the theory score, and
+      // the security rules keep it from the student.
+      final evaluation = exam.status == ExamStatus.approved
+          ? await _evaluations.fetchEvaluation(_examId)
+          : null;
       emit(
         ExamResultLoaded(
           exam: exam,

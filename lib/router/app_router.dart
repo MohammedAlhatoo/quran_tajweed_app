@@ -353,7 +353,6 @@ abstract final class AppRouter {
         builder: (context, state) {
           // The questions screen passes its cubit along with the answers.
           final shared = state.extra;
-          final authState = authCubit.state;
           return MultiBlocProvider(
             providers: [
               shared is QuestionsCubit
@@ -367,12 +366,6 @@ abstract final class AppRouter {
                   submissions: context.read<SubmissionRepository>(),
                   recordings: context.read<RecordingRepository>(),
                   examId: state.pathParameters['examId']!,
-                  studentId: authState is AuthAuthenticated
-                      ? authState.user.uid
-                      : '',
-                  studentName: authState is AuthAuthenticated
-                      ? authState.user.name
-                      : '',
                 )..load(),
               ),
             ],

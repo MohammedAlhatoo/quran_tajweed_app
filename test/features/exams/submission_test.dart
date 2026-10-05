@@ -24,19 +24,15 @@ final _chosen = {for (final question in _questions) question.id: 'أ'};
 class _FakeSubmissionRepository implements SubmissionRepository {
   AppFailure? failure;
   String? examId;
-  String? studentId;
   List<SubmissionAnswer>? answers;
 
   @override
   Future<void> submitExam({
     required String examId,
-    required String studentId,
-    required String studentName,
     required List<SubmissionAnswer> answers,
   }) async {
     if (failure case final failure?) throw failure;
     this.examId = examId;
-    this.studentId = studentId;
     this.answers = answers;
   }
 }
@@ -72,8 +68,6 @@ void main() {
       submissions: submissions,
       recordings: recordings,
       examId: 'exam-1',
-      studentId: 'uid-1',
-      studentName: 'طالب',
     );
   });
 
@@ -131,7 +125,6 @@ void main() {
 
       expect(cubit.state.status, SubmissionStatus.submitted);
       expect(submissions.examId, 'exam-1');
-      expect(submissions.studentId, 'uid-1');
       expect(submissions.answers!.map((answer) => answer.order), [
         for (var order = 1; order <= 10; order++) order,
       ]);
@@ -188,6 +181,19 @@ void main() {
 
       expect(cubit.state.status, SubmissionStatus.submitted);
       expect(recordings.uploads, 0);
+    });
+
+    test('a refused submit shows the reason and sends nothing more', () async {
+      await cubit.load();
+      submissions.failure = const AppFailure(
+        'أسئلة هذا الاختبار غير مكتملة، لذا لا يمكن إرساله. تواصل مع الإدارة.',
+      );
+
+      await cubit.submit(questions: _questions, chosen: _chosen);
+
+      expect(cubit.state.status, SubmissionStatus.ready);
+      expect(cubit.state.errorMessage, contains('غير مكتملة'));
+      expect(submissions.answers, isNull);
     });
 
     test('a failed submit can be retried', () async {

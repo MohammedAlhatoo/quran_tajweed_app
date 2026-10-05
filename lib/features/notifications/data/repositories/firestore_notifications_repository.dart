@@ -6,8 +6,9 @@ import '../../domain/entities/app_notification.dart';
 import '../../domain/repositories/notifications_repository.dart';
 import '../../domain/services/exam_notification_texts.dart';
 
-/// In-app notifications only. They are written by the device that causes the
-/// event, in the same batch, because there is no backend to send them.
+/// In-app notifications only. The approval of a result is notified by the
+/// supervisor's device, in the batch that approves it; the submission of an
+/// examination, by the `submitExam` Cloud Function.
 class FirestoreNotificationsRepository implements NotificationsRepository {
   FirestoreNotificationsRepository({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;
@@ -16,28 +17,6 @@ class FirestoreNotificationsRepository implements NotificationsRepository {
 
   static DateTime? _toDate(Object? value) =>
       value is Timestamp ? value.toDate() : null;
-
-  /// The ID and the fields of the notification that tells the supervisor of
-  /// [squareId] that [examId] was submitted.
-  static (String id, Map<String, dynamic> data) examSubmitted({
-    required String examId,
-    required String squareId,
-    required String studentName,
-  }) {
-    return (
-      '${examId}_submitted',
-      {
-        'userId': null,
-        'squareId': squareId,
-        'title': ExamNotificationTexts.submittedTitle,
-        'body': ExamNotificationTexts.submittedBody(studentName),
-        'type': AppNotification.examSubmitted,
-        'relatedId': examId,
-        'isRead': false,
-        'createdAt': FieldValue.serverTimestamp(),
-      },
-    );
-  }
 
   /// The ID and the fields of the notification that tells [studentId] that
   /// the result of [examId] was approved.

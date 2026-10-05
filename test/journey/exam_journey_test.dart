@@ -34,7 +34,6 @@ import 'package:quran_tajweed_app/features/exams/presentation/state/exam_result_
 import 'package:quran_tajweed_app/features/exams/presentation/state/recording_cubit.dart';
 import 'package:quran_tajweed_app/features/exams/presentation/state/start_exam_cubit.dart';
 import 'package:quran_tajweed_app/features/exams/presentation/state/submission_cubit.dart';
-import 'package:quran_tajweed_app/features/notifications/data/repositories/firestore_notifications_repository.dart';
 import 'package:quran_tajweed_app/features/notifications/domain/entities/app_notification.dart';
 import 'package:quran_tajweed_app/features/notifications/domain/repositories/notifications_repository.dart';
 import 'package:quran_tajweed_app/features/notifications/presentation/state/notifications_cubit.dart';
@@ -56,13 +55,16 @@ import 'package:quran_tajweed_app/features/supervisor/presentation/state/pending
 /// Firebase is replaced by [_Backend], documents kept in memory. Everything
 /// around it is the code of the app: the curriculum written by
 /// [CurriculumSeeder], the selection of the segment and the questions, the
-/// documents of the submission notification and of the approval, the
-/// entities that read them, the scoring, and the bundled Quran text.
+/// documents of the approval, the entities that read them, the final score
+/// and the result, and the bundled Quran text.
 ///
-/// What [_Backend] does itself (the checks before an examination starts and
-/// the fields of the examination, question and submission documents) repeats
-/// the Firestore repositories by hand. This test does not run those
-/// repositories or the security rules.
+/// What [_Backend] does itself repeats by hand the Firestore repositories
+/// (the checks before an examination starts and the fields of the
+/// examination and question documents) and the Cloud Functions (the answer
+/// key copied when an examination is created, and the submission with its
+/// theory score and its notification). This test does not run those
+/// repositories, the Cloud Functions or the security rules; the functions
+/// have their own tests in `functions/test`.
 const _student = AppUser(
   uid: 'student-1',
   name: 'أحمد',
@@ -246,6 +248,23 @@ class _Backend
         'options': question.options,
       });
     }
+    // The snapshotExamAnswerKey function: the correct answers as they are
+    // now, kept for the grading of this examination.
+    _set(FirebaseCollections.examAnswerKeys, examId, {
+      'examId': examId,
+      'answers': [
+        for (final (index, question) in questions.indexed)
+          {
+            'order': index + 1,
+            'questionId': question.id,
+            'correctAnswer': docs(
+              FirebaseCollections.questionAnswers,
+            )[question.id]!['correctAnswer'],
+          },
+      ],
+      'source': 'exam_created',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
     return _exam(examId)!;
   }
 
@@ -319,30 +338,60 @@ class _Backend
 
   // Submission.
 
+  // The submitExam function.
   @override
   Future<void> submitExam({
     required String examId,
-    required String studentId,
-    required String studentName,
     required List<SubmissionAnswer> answers,
   }) async {
+    final exam = docs(FirebaseCollections.exams)[examId]!;
+    final key = FirebaseReviewRepository.answerKeyFrom(
+      docs(FirebaseCollections.examAnswerKeys)[examId],
+    );
+    if (key.length != 10 || answers.length != 10) {
+      throw const AppFailure('أسئلة هذا الاختبار غير مكتملة.');
+    }
+    final correct = answers
+        .where((answer) => key[answer.order] == answer.answer)
+        .length;
+
     _set(FirebaseCollections.submissions, examId, {
       'examId': examId,
-      'studentId': studentId,
+      'studentId': exam['studentId'],
       'recordingUrl': recitationRecordingPath(examId),
       'answers': [for (final answer in answers) answer.toMap()],
       'submittedAt': FieldValue.serverTimestamp(),
+    });
+    // The theory score is saved here, once, before any review.
+    _set(FirebaseCollections.evaluations, examId, {
+      'examId': examId,
+      'supervisorId': null,
+      'recitationScore': null,
+      'theoryScore': correct * 2,
+      'correctCount': correct,
+      'finalScore': null,
+      'result': null,
+      'feedback': null,
+      'detailedErrors': <Object>[],
+      'status': 'pending',
+      'gradedAt': FieldValue.serverTimestamp(),
+      'reviewedAt': null,
+      'approvedAt': null,
     });
     _update(FirebaseCollections.exams, examId, {
       'status': ExamStatus.pendingReview.value,
       'submittedAt': FieldValue.serverTimestamp(),
     });
-    final (id, data) = FirestoreNotificationsRepository.examSubmitted(
-      examId: examId,
-      squareId: docs(FirebaseCollections.exams)[examId]!['squareId'] as String,
-      studentName: studentName,
-    );
-    _set(FirebaseCollections.notifications, id, data);
+    _set(FirebaseCollections.notifications, '${examId}_submitted', {
+      'userId': null,
+      'squareId': exam['squareId'],
+      'title': 'اختبار جديد يحتاج مراجعة',
+      'body': 'أرسل الطالب ${_student.name} اختبارًا بانتظار مراجعتك.',
+      'type': AppNotification.examSubmitted,
+      'relatedId': examId,
+      'isRead': false,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
   }
 
   // Review.
@@ -376,13 +425,14 @@ class _Backend
   }
 
   @override
-  Future<Map<String, String>> fetchCorrectAnswers(
-    List<String> questionIds,
-  ) async => {
-    for (final id in questionIds)
-      if (docs(FirebaseCollections.questionAnswers)[id] case final answer?)
-        id: answer['correctAnswer'] as String,
-  };
+  Future<int?> fetchTheoryScore(String examId) async =>
+      docs(FirebaseCollections.evaluations)[examId]?['theoryScore'] as int?;
+
+  @override
+  Future<Map<int, String>> fetchAnswerKey(String examId) async =>
+      FirebaseReviewRepository.answerKeyFrom(
+        docs(FirebaseCollections.examAnswerKeys)[examId],
+      );
 
   @override
   Future<List<TajweedRule>> fetchTajweedRules() async => [
@@ -402,19 +452,32 @@ class _Backend
     required String? feedback,
     required List<RecitationError> errors,
   }) async {
-    _update(FirebaseCollections.exams, exam.id, {
-      'status': ExamStatus.approved.value,
-      'reviewedAt': FieldValue.serverTimestamp(),
-      'approvedAt': FieldValue.serverTimestamp(),
-    });
-    final documents = FirebaseReviewRepository.approvalDocuments(
-      exam: exam,
-      courseName: courseName,
+    // The security rules accept the approval only when its final score is
+    // the recitation score plus the saved theory score.
+    final saved = docs(FirebaseCollections.evaluations)[exam.id]!;
+    final approval = FirebaseReviewRepository.evaluationApproval(
       supervisorId: supervisorId,
       recitationScore: recitationScore,
       theoryScore: theoryScore,
       feedback: feedback,
       errors: errors,
+    );
+    if (saved['status'] != 'pending' ||
+        approval['finalScore'] !=
+            recitationScore + (saved['theoryScore'] as int)) {
+      throw const AppFailure('لا تملك صلاحية تنفيذ هذا الإجراء.');
+    }
+    _update(FirebaseCollections.exams, exam.id, {
+      'status': ExamStatus.approved.value,
+      'reviewedAt': FieldValue.serverTimestamp(),
+      'approvedAt': FieldValue.serverTimestamp(),
+    });
+    _update(FirebaseCollections.evaluations, exam.id, approval);
+    final documents = FirebaseReviewRepository.approvalDocuments(
+      exam: exam,
+      courseName: courseName,
+      recitationScore: recitationScore,
+      theoryScore: theoryScore,
     );
     for (final MapEntry(key: path, value: data) in documents.entries) {
       final [collection, id] = path.split('/');
@@ -581,11 +644,10 @@ void main() {
     );
     await cubit.load();
     final questions = (cubit.state as QuestionsLoaded).questions;
-    final answers = await backend.fetchCorrectAnswers([
-      for (final question in questions) question.questionId,
-    ]);
+    // The answers of this examination, which the student never reads.
+    final answers = await backend.fetchAnswerKey(examId);
     for (final (index, question) in questions.indexed) {
-      final right = answers[question.questionId]!;
+      final right = answers[question.order]!;
       cubit
         ..selectAnswer(
           index < correct
@@ -603,8 +665,6 @@ void main() {
     submissions: backend,
     recordings: backend,
     examId: examId,
-    studentId: _student.uid,
-    studentName: _student.name,
   );
 
   Future<void> submit(String examId, QuestionsLoaded answered) async {
@@ -767,6 +827,10 @@ void main() {
     expect(awaiting.isAwaitingReview, isTrue);
     await details.close();
 
+    // The theory score is saved, and the student does not see it yet.
+    expect(await backend.fetchTheoryScore(exam.id), 18);
+    expect((await result(exam.id)).evaluation, isNull);
+
     // The supervisor of the square is notified and finds it waiting.
     final toSupervisor = await notifications(
       NotificationAudience.square(_supervisor.squareId!),
@@ -868,6 +932,65 @@ void main() {
       expect(shown.certificate, isNotNull);
     },
   );
+
+  test('the theory score is the one of the answers the examination was '
+      'created with, whatever the question bank becomes', () async {
+    void changeEveryAnswer() {
+      for (final answer
+          in backend.docs(FirebaseCollections.questionAnswers).values) {
+        answer['correctAnswer'] = 'إجابة أخرى';
+      }
+    }
+
+    final exam = await start();
+    final answered = await answer(exam.id, correct: 8);
+    // The bank changes while the examination is open, and again once it is
+    // submitted.
+    changeEveryAnswer();
+    await recordAndUpload(exam.id);
+    await submit(exam.id, answered);
+    backend.docs(FirebaseCollections.questionAnswers).clear();
+
+    final reviewed = await review(exam.id);
+    expect(reviewed.theoryScore, 16);
+    expect(
+      reviewed.questions.where(
+        (question) =>
+            reviewed.answerTo(question) == reviewed.correctAnswerTo(question),
+      ),
+      hasLength(8),
+    );
+
+    await approve(reviewed, recitationScore: 60);
+    final shown = await result(exam.id);
+    expect(shown.evaluation!.theoryScore, 16);
+    expect(shown.evaluation!.finalScore, 76);
+  });
+
+  test('a result cannot be approved with another theory score', () async {
+    final exam = await start();
+    await recordAndUpload(exam.id);
+    await submit(exam.id, await answer(exam.id, correct: 5));
+    final reviewed = await review(exam.id);
+    expect(reviewed.theoryScore, 10);
+
+    final cubit = EvaluationCubit(
+      repository: backend,
+      supervisorId: _supervisor.uid,
+    )..setRecitationScore('60');
+    await cubit.approve(
+      exam: reviewed.exam,
+      courseName: reviewed.course!.name,
+      theoryScore: 20,
+    );
+
+    expect(cubit.state.status, EvaluationStatus.editing);
+    expect(cubit.state.errorMessage, isNotNull);
+    await cubit.close();
+    expect((await backend.fetchExam(exam.id))!.status, ExamStatus.pendingReview);
+    expect(await backend.fetchTheoryScore(exam.id), 10);
+    expect((await result(exam.id)).evaluation, isNull);
+  });
 
   test('an open examination is continued with its segment and questions, and '
       'is not submitted without its recitation', () async {

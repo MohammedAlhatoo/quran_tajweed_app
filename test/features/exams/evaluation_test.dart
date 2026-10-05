@@ -82,6 +82,27 @@ void main() {
       expect(evaluation.detailedErrors, isEmpty);
     });
 
+    test('an evaluation that is not approved yet is not a result', () {
+      // As the submission writes it: the theory score only.
+      expect(
+        Evaluation.fromMap('exam-1', {
+          'examId': 'exam-1',
+          'supervisorId': null,
+          'recitationScore': null,
+          'theoryScore': 18,
+          'correctCount': 9,
+          'finalScore': null,
+          'result': null,
+          'feedback': null,
+          'detailedErrors': <Object>[],
+          'status': 'pending',
+          'reviewedAt': null,
+          'approvedAt': null,
+        }, toDate: _toDate),
+        isNull,
+      );
+    });
+
     test('skips an error without an ID or a rule', () {
       final evaluation = Evaluation.fromMap(
         'exam-1',

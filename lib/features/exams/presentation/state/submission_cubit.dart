@@ -36,15 +36,11 @@ class SubmissionCubit extends Cubit<SubmissionState> {
     required this._submissions,
     required this._recordings,
     required this._examId,
-    required this._studentId,
-    required this._studentName,
   }) : super(const SubmissionState());
 
   final SubmissionRepository _submissions;
   final RecordingRepository _recordings;
   final String _examId;
-  final String _studentId;
-  final String _studentName;
 
   /// Checks whether the recitation is uploaded.
   Future<void> load() async {
@@ -96,12 +92,7 @@ class SubmissionCubit extends Cubit<SubmissionState> {
         );
         return;
       }
-      await _submissions.submitExam(
-        examId: _examId,
-        studentId: _studentId,
-        studentName: _studentName,
-        answers: answers,
-      );
+      await _submissions.submitExam(examId: _examId, answers: answers);
       emit(
         const SubmissionState(
           status: SubmissionStatus.submitted,

@@ -5,13 +5,10 @@ import 'package:quran_tajweed_app/core/constants/firebase_collections.dart';
 import 'package:quran_tajweed_app/features/courses/data/seed/curriculum_seed.dart';
 import 'package:quran_tajweed_app/features/courses/data/seed/curriculum_seeder.dart';
 import 'package:quran_tajweed_app/features/courses/domain/entities/course_level.dart';
-import 'package:quran_tajweed_app/features/exams/domain/entities/submission_answer.dart';
 import 'package:quran_tajweed_app/features/questions/data/seed/question_bank_seed.dart';
 import 'package:quran_tajweed_app/features/questions/data/seed/question_seed.dart';
-import 'package:quran_tajweed_app/features/questions/domain/entities/exam_question.dart';
 import 'package:quran_tajweed_app/features/questions/domain/entities/question.dart';
 import 'package:quran_tajweed_app/features/questions/domain/services/question_selector.dart';
-import 'package:quran_tajweed_app/features/supervisor/domain/services/exam_scoring.dart';
 
 class _MemorySeedStore implements SeedStore {
   final Map<String, Map<String, Map<String, dynamic>>> collections = {};
@@ -270,42 +267,6 @@ void main() {
           );
         }
       }
-    });
-
-    test('answering with the stored answers earns the full theory score', () {
-      final seeds = questionsOfLevel(CourseLevel.sanad).take(10).toList();
-      final questions = [
-        for (final (index, seed) in seeds.indexed)
-          ExamQuestion(
-            id: 'e1_${index + 1}',
-            examId: 'e1',
-            questionId: seed.key,
-            order: index + 1,
-            type: seed.type.value,
-            question: seed.question,
-            options: seed.options,
-          ),
-      ];
-
-      final score = ExamScoring.theoryScore(
-        questions: questions,
-        answers: [
-          for (final (index, seed) in seeds.indexed)
-            SubmissionAnswer(
-              order: index + 1,
-              questionId: seed.key,
-              answer: seed.options.firstWhere(
-                (option) => option == seed.correctAnswer,
-              ),
-            ),
-        ],
-        correctAnswers: {
-          for (final seed in seeds)
-            seed.key: seed.answerToMap()['correctAnswer']! as String,
-        },
-      );
-
-      expect(score, 20);
     });
   });
 

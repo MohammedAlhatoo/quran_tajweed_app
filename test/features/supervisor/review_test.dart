@@ -178,10 +178,13 @@ class _FakeReviewRepository implements ReviewRepository {
   AppFailure? studentFailure;
   int downloads = 0;
 
-  /// Questions 1-7 are answered correctly by [_submission].
-  Map<String, String> correctAnswers = {
-    for (var order = 1; order <= 10; order++) 'q$order': order <= 7 ? 'ب' : 'أ',
+  /// The answer key: questions 1-7 are answered correctly by [_submission].
+  Map<int, String> answerKey = {
+    for (var order = 1; order <= 10; order++) order: order <= 7 ? 'ب' : 'أ',
   };
+
+  /// The theory score saved when the examination was submitted.
+  int? theoryScore = 14;
   ({
     String examId,
     String courseName,
@@ -221,9 +224,10 @@ class _FakeReviewRepository implements ReviewRepository {
       _questions;
 
   @override
-  Future<Map<String, String>> fetchCorrectAnswers(
-    List<String> questionIds,
-  ) async => {for (final id in questionIds) id: ?correctAnswers[id]};
+  Future<int?> fetchTheoryScore(String examId) async => theoryScore;
+
+  @override
+  Future<Map<int, String>> fetchAnswerKey(String examId) async => answerKey;
 
   @override
   Future<List<Exam>> fetchReviewedExams(String squareId) async {
@@ -386,7 +390,7 @@ void main() {
       expect(state.answerTo(_questions.first), 'ب');
       expect(state.answerTo(_questions.last), isNull);
       expect(state.correctAnswerTo(_questions.first), 'ب');
-      // Seven correct answers out of ten.
+      expect(state.correctAnswerTo(_questions.last), 'أ');
       expect(state.theoryScore, 14);
     });
 
@@ -416,8 +420,24 @@ void main() {
       expect(state.segment.id, 'segment-1');
     });
 
-    test('the theory score is unknown without a correct answer', () async {
-      reviews.correctAnswers.remove('q4');
+    test('the theory score is the saved one, never recalculated', () async {
+      // The saved score disagrees with what the answers would earn here.
+      reviews.theoryScore = 6;
+      var cubit = build();
+      await cubit.load();
+      expect((cubit.state as ExamReviewLoaded).theoryScore, 6);
+
+      // It does not depend on the answer key being readable either.
+      reviews.answerKey = const {};
+      cubit = build();
+      await cubit.load();
+      final state = cubit.state as ExamReviewLoaded;
+      expect(state.theoryScore, 6);
+      expect(state.correctAnswerTo(_questions.first), isNull);
+    });
+
+    test('an examination without a saved theory score has none', () async {
+      reviews.theoryScore = null;
       final cubit = build();
 
       await cubit.load();
@@ -495,26 +515,6 @@ void main() {
       expect(ExamScoring.isValidRecitationScore(80), isTrue);
       expect(ExamScoring.isValidRecitationScore(81), isFalse);
       expect(ExamScoring.isValidRecitationScore(-1), isFalse);
-    });
-
-    test('the theory score gives every question two marks', () {
-      int? score(Map<String, String> correct) => ExamScoring.theoryScore(
-        questions: _questions,
-        answers: _submission.answers,
-        correctAnswers: correct,
-      );
-
-      expect(score({for (final q in _questions) q.questionId: 'ب'}), 18);
-      expect(score({for (final q in _questions) q.questionId: 'أ'}), 0);
-      expect(score(const {}), isNull);
-      expect(
-        ExamScoring.theoryScore(
-          questions: const [],
-          answers: _submission.answers,
-          correctAnswers: const {},
-        ),
-        isNull,
-      );
     });
   });
 

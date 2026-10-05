@@ -59,10 +59,6 @@ void main() {
         allOf(contains('راسب'), isNot(contains('ناجح'))),
       );
     });
-
-    test('the submission notification names the student', () {
-      expect(ExamNotificationTexts.submittedBody('أحمد'), contains('أحمد'));
-    });
   });
 
   test('AppNotification.fromMap reads an unread notification', () {

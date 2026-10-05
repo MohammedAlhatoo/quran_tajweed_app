@@ -327,7 +327,10 @@ class _AnswerCard extends StatelessWidget {
             style: AppTextStyles.cairo(
               size: 15,
               weight: FontWeight.w700,
-              color: answer != null && answer == correctAnswer
+              // Neither right nor wrong without the answer key.
+              color: answer != null && correctAnswer == null
+                  ? AppColors.title
+                  : answer != null && answer == correctAnswer
                   ? AppColors.optionSelectedText
                   : AppColors.danger,
               lineHeight: 22.5,
@@ -594,9 +597,9 @@ class _ErrorDialogState extends State<_ErrorDialog> {
   }
 }
 
-/// The recitation score entered by the supervisor, the scores derived from
-/// it, the general notes, the detailed Tajweed errors, and the approval of
-/// the result.
+/// The recitation score entered by the supervisor, the saved theory score,
+/// the scores derived from the two, the general notes, the detailed Tajweed
+/// errors, and the approval of the result.
 class _EvaluationForm extends StatelessWidget {
   const _EvaluationForm({
     required this.exam,
@@ -614,7 +617,7 @@ class _EvaluationForm extends StatelessWidget {
   final List<TajweedRule> rules;
   final String courseName;
 
-  /// Null when the theory score cannot be calculated.
+  /// The saved theory score, shown and never edited. Null when none is saved.
   final int? theoryScore;
   final VoidCallback onApproved;
 
@@ -671,8 +674,8 @@ class _EvaluationForm extends StatelessWidget {
     if (theoryScore == null) {
       return const _Card(
         child: _Value(
-          'تعذّر احتساب درجة الأسئلة النظرية لأن الإجابات الصحيحة غير متاحة. '
-          'لا يمكن اعتماد النتيجة.',
+          'لا توجد درجة محفوظة للأسئلة النظرية لهذا الاختبار، لأنه لم يُرسل '
+          'بأسئلته وإجاباته العشرة كاملة. لا يمكن اعتماد النتيجة.',
         ),
       );
     }
@@ -731,7 +734,7 @@ class _EvaluationForm extends StatelessWidget {
                         .setRecitationScore,
                   ),
                   const SizedBox(height: 12),
-                  const _Label('درجة الأسئلة النظرية'),
+                  const _Label('درجة الأسئلة النظرية (محسوبة عند الإرسال)'),
                   const SizedBox(height: 2),
                   _Value('$theoryScore / ${ExamScoring.maxTheoryScore}'),
                   const SizedBox(height: 12),

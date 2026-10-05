@@ -13,7 +13,6 @@ import '../../../questions/domain/entities/exam_question.dart';
 import '../../../quran/domain/entities/quran_ayah.dart';
 import '../../../quran/domain/repositories/quran_repository.dart';
 import '../../domain/repositories/review_repository.dart';
-import '../../domain/services/exam_scoring.dart';
 
 sealed class ExamReviewState {
   const ExamReviewState();
@@ -31,7 +30,8 @@ class ExamReviewLoaded extends ExamReviewState {
     required this.student,
     required this.submission,
     required this.questions,
-    required this.correctAnswers,
+    required this.theoryScore,
+    this.correctAnswers = const {},
     this.rules = const [],
     this.ayahs = const [],
   });
@@ -48,9 +48,14 @@ class ExamReviewLoaded extends ExamReviewState {
   final Submission submission;
   final List<ExamQuestion> questions;
 
-  /// The correct answer of each question, keyed by the ID of its source
-  /// question.
-  final Map<String, String> correctAnswers;
+  /// The theory score out of 20, saved when the student submitted the
+  /// examination. Null when none is saved; the result cannot be approved
+  /// then.
+  final int? theoryScore;
+
+  /// The correct answer of each question, keyed by the order of the question,
+  /// from the answer key of the examination. Empty when it has none.
+  final Map<int, String> correctAnswers;
 
   /// The Tajweed rules an error can be recorded against. Empty when they
   /// cannot be read or none are stored.
@@ -60,17 +65,9 @@ class ExamReviewLoaded extends ExamReviewState {
   /// when the text cannot be read.
   final List<QuranAyah> ayahs;
 
-  /// The theory score out of 20, or null when it cannot be calculated
-  /// because the questions or their correct answers are missing.
-  int? get theoryScore => ExamScoring.theoryScore(
-    questions: questions,
-    answers: submission.answers,
-    correctAnswers: correctAnswers,
-  );
-
   /// The correct answer of [question], or null when it is not stored.
   String? correctAnswerTo(ExamQuestion question) =>
-      correctAnswers[question.questionId];
+      correctAnswers[question.order];
 
   /// The student's answer to [question], or null when there is none.
   String? answerTo(ExamQuestion question) {
@@ -88,8 +85,8 @@ class ExamReviewError extends ExamReviewState {
 }
 
 /// Loads everything a supervisor reviews in one submitted examination: the
-/// student, the course, the Quran segment, the submission, and the questions
-/// with their correct answers.
+/// student, the course, the Quran segment, the submission, the questions with
+/// their correct answers, and the saved theory score.
 class ExamReviewCubit extends Cubit<ExamReviewState> {
   ExamReviewCubit({
     required this._reviews,
@@ -124,7 +121,6 @@ class ExamReviewCubit extends Cubit<ExamReviewState> {
         emit(const ExamReviewError('لم يُرسل هذا الاختبار بعد.'));
         return;
       }
-      final questions = await _reviews.fetchExamQuestions(_examId);
       emit(
         ExamReviewLoaded(
           exam: exam,
@@ -132,10 +128,9 @@ class ExamReviewCubit extends Cubit<ExamReviewState> {
           segment: segment,
           student: student,
           submission: submission,
-          questions: questions,
-          correctAnswers: await _reviews.fetchCorrectAnswers([
-            for (final question in questions) question.questionId,
-          ]),
+          questions: await _reviews.fetchExamQuestions(_examId),
+          theoryScore: await _reviews.fetchTheoryScore(_examId),
+          correctAnswers: await _reviews.fetchAnswerKey(_examId),
           rules: await _fetchRules(),
           ayahs: await _fetchAyahs(segment),
         ),

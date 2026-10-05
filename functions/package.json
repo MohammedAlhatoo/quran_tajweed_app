@@ -1,0 +1,21 @@
+{
+  "name": "quran-tajweed-functions",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "description": "The trusted backend of the examination: the answer key snapshot, and the submission with its theory score.",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "test": "node --test test/grading.test.mjs test/exam_functions.test.mjs",
+    "test:unit": "node --test test/grading.test.mjs",
+    "test:deployed": "node --test test/deployed_functions.test.mjs",
+    "test:emulator": "cd .. && firebase emulators:exec --only firestore --project demo-quran-exam \"npm --prefix functions test\"",
+    "test:emulator:deployed": "cd .. && firebase emulators:exec --only functions,firestore,auth --project demo-quran-exam \"npm --prefix functions run test:deployed\""
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^7.4.0"
+  }
+}

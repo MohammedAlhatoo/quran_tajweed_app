@@ -63,9 +63,10 @@ class _FakeReviewRepository implements ReviewRepository {
       const [];
 
   @override
-  Future<Map<String, String>> fetchCorrectAnswers(
-    List<String> questionIds,
-  ) async => const {};
+  Future<int?> fetchTheoryScore(String examId) async => null;
+
+  @override
+  Future<Map<int, String>> fetchAnswerKey(String examId) async => const {};
 
   @override
   Future<void> approveExam({

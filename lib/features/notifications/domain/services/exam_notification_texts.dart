@@ -1,10 +1,7 @@
-/// The wording of the notifications sent for examination events.
+/// The wording of the notification the app sends when a result is approved.
+/// The notification of a submission is worded by the `submitExam` Cloud
+/// Function.
 abstract final class ExamNotificationTexts {
-  static const String submittedTitle = 'اختبار جديد يحتاج مراجعة';
-
-  static String submittedBody(String studentName) =>
-      'أرسل الطالب $studentName اختبارًا بانتظار مراجعتك.';
-
   static const String approvedTitle = 'تم اعتماد نتيجة اختبارك';
 
   /// States the result plainly: passed or failed, with the final score.

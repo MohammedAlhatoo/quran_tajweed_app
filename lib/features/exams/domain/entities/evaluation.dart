@@ -2,6 +2,10 @@ import 'recitation_error.dart';
 
 /// The approved evaluation of one examination, from the `evaluations`
 /// collection. Its ID is the examination's ID.
+///
+/// The document is created when the student submits, with the theory score
+/// only, and completed when the supervisor approves the result. It is read
+/// as an [Evaluation] only once it is approved.
 class Evaluation {
   const Evaluation({
     required this.examId,
@@ -23,7 +27,8 @@ class Evaluation {
   /// Out of 80, entered by the supervisor.
   final int recitationScore;
 
-  /// Out of 20, calculated from the student's answers.
+  /// Out of 20, calculated from the student's answers when the examination
+  /// was submitted.
   final int theoryScore;
 
   /// Out of 100.
@@ -43,8 +48,8 @@ class Evaluation {
 
   bool get passed => result == passedResult;
 
-  /// Returns null when a score or the result is missing. [toDate] converts a
-  /// stored timestamp value.
+  /// Returns null when a score or the result is missing, as in an evaluation
+  /// that is not approved yet. [toDate] converts a stored timestamp value.
   static Evaluation? fromMap(
     String id,
     Map<String, dynamic> data, {

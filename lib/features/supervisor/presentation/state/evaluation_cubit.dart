@@ -142,8 +142,9 @@ class EvaluationCubit extends Cubit<EvaluationState> {
   }
 
   /// Approves the result of [exam] with the entered recitation score, notes
-  /// and errors, and [theoryScore], the score calculated from the student's
-  /// answers. [courseName] names the course in the student's notification.
+  /// and errors. [theoryScore] is the score saved when the student submitted;
+  /// the supervisor never enters or changes it. [courseName] names the course
+  /// in the student's notification.
   Future<void> approve({
     required Exam exam,
     required String courseName,

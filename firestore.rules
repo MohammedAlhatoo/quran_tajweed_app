@@ -34,11 +34,6 @@ service cloud.firestore {
       return isGeneralAdmin() || isOfficerOf(regionId);
     }
 
-    // A suspended student keeps reading their own records but writes nothing.
-    function isActiveStudent() {
-      return hasRole('student');
-    }
-
     // An active square supervisor who is assigned to a square. A supervisor
     // without a square reaches no square or examination data.
     function isAssignedSupervisor() {
@@ -223,12 +218,18 @@ service cloud.firestore {
       allow read: if signedIn();
     }
 
-    // Correct answers. Students never read them, and nobody lists them. An
-    // active supervisor assigned to a square reads one at a time to grade the
-    // theory answers of a submitted examination. Not enforced here: that the
-    // question belongs to an examination of the supervisor's square.
+    // Correct answers. No account reads or writes them: the Cloud Functions
+    // copy them into the answer key of each examination and grade with it.
     match /question_answers/{questionId} {
-      allow get: if isAssignedSupervisor();
+      allow read, write: if false;
+    }
+
+    // The answer key of one examination, with the examination's ID: the
+    // correct answers as they were when it was created. Written by the Cloud
+    // Functions only, and never changed. The supervisor of the examination's
+    // square reads it to review the theory answers; students never do.
+    match /exam_answer_keys/{examId} {
+      allow get: if isSupervisorOf(examData(examId).squareId);
     }
 
     match /exams/{examId} {
@@ -278,23 +279,14 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/exam_segments/$(request.resource.data.segmentId)).data.isActive == true
         && request.resource.data.courseId in get(/databases/$(database)/documents/exam_segments/$(request.resource.data.segmentId)).data.courseIds;
 
-      // The student submits the examination: only the status and the two
-      // timestamps change, in the same batch that creates the submission.
-      // The mosque, square and region the examination was started in never
-      // change, whoever writes.
-      allow update: if isActiveStudent()
-        && resource.data.studentId == request.auth.uid
-        && resource.data.status == 'in_progress'
-        && request.resource.data.status == 'pending_review'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status', 'submittedAt', 'updatedAt'
-        ])
-        && request.resource.data.submittedAt == request.time
-        && request.resource.data.updatedAt == request.time
-        && existsAfter(/databases/$(database)/documents/submissions/$(examId));
+      // The student never moves the examination to `pending_review`: the
+      // `submitExam` Cloud Function does, together with the submission and
+      // the theory score.
 
       // The supervisor approves the result: only the status and the
-      // timestamps change, in the same batch that creates the evaluation.
+      // timestamps change, in the same batch that approves the evaluation.
+      // The mosque, square and region the examination was started in never
+      // change, whoever writes.
       allow update: if isSupervisorOf(resource.data.squareId)
         && awaitingReview(resource.data.status)
         && request.resource.data.status == 'approved'
@@ -304,7 +296,7 @@ service cloud.firestore {
         && request.resource.data.reviewedAt == request.time
         && request.resource.data.approvedAt == request.time
         && request.resource.data.updatedAt == request.time
-        && existsAfter(/databases/$(database)/documents/evaluations/$(examId));
+        && getAfter(/databases/$(database)/documents/evaluations/$(examId)).data.status == 'approved';
     }
 
     // One Tajweed error of an evaluation: {id, ruleId, ruleName, ayahNumber,
@@ -345,42 +337,39 @@ service cloud.firestore {
         && (errors.size() < 20 || validDetailedError(errors[19]));
     }
 
-    // One evaluation per examination, with the examination's ID, created when
-    // the supervisor approves the result with the notes and the Tajweed
-    // errors. It is never changed afterwards. Not enforced here: that
-    // theoryScore matches the student's answers and question_answers.
+    // One evaluation per examination, with the examination's ID. The
+    // `submitExam` Cloud Function creates it when the student submits, with
+    // the theory score and the status `pending`; no account creates one. The
+    // supervisor then approves it once, with the recitation score, the notes
+    // and the Tajweed errors, and it is never changed afterwards. Nobody but
+    // the Cloud Function ever writes theoryScore.
     match /evaluations/{evaluationId} {
       allow get: if isSupervisorOf(examData(evaluationId).squareId);
 
-      // The student reads the evaluation of their own examination. It exists
-      // only once the result is approved.
+      // The student reads the evaluation of their own examination only once
+      // the result is approved, so the theory score is not shown before.
       allow get: if signedIn()
-        && examData(evaluationId).studentId == request.auth.uid;
+        && examData(evaluationId).studentId == request.auth.uid
+        && (resource == null || resource.data.status == 'approved');
 
       allow get: if managesRegion(examData(evaluationId).regionId);
 
-      allow create: if isSupervisorOf(examData(evaluationId).squareId)
+      // An examination without a pending evaluation cannot be approved: it
+      // was not submitted with its ten questions and its ten answers.
+      allow update: if isSupervisorOf(examData(evaluationId).squareId)
         && awaitingReview(examData(evaluationId).status)
-        && request.resource.data.keys().hasAll([
-          'examId', 'supervisorId', 'recitationScore', 'theoryScore',
-          'finalScore', 'result', 'feedback', 'detailedErrors', 'status',
-          'reviewedAt', 'approvedAt'
+        && resource.data.status == 'pending'
+        && resource.data.theoryScore is int
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'supervisorId', 'recitationScore', 'finalScore', 'result',
+          'feedback', 'detailedErrors', 'status', 'reviewedAt', 'approvedAt'
         ])
-        && request.resource.data.keys().hasOnly([
-          'examId', 'supervisorId', 'recitationScore', 'theoryScore',
-          'finalScore', 'result', 'feedback', 'detailedErrors', 'status',
-          'reviewedAt', 'approvedAt'
-        ])
-        && request.resource.data.examId == evaluationId
         && request.resource.data.supervisorId == request.auth.uid
         && request.resource.data.recitationScore is int
         && request.resource.data.recitationScore >= 0
         && request.resource.data.recitationScore <= 80
-        && request.resource.data.theoryScore is int
-        && request.resource.data.theoryScore >= 0
-        && request.resource.data.theoryScore <= 20
         && request.resource.data.finalScore
-          == request.resource.data.recitationScore + request.resource.data.theoryScore
+          == request.resource.data.recitationScore + resource.data.theoryScore
         && request.resource.data.result
           == (request.resource.data.finalScore >= 70 ? 'passed' : 'failed')
         && (request.resource.data.feedback == null
@@ -428,8 +417,8 @@ service cloud.firestore {
     }
 
     // A notification is addressed either to one account (userId) or to the
-    // supervisor of a square (squareId). It is written in the batch of the
-    // event it reports, and afterwards only marked as read.
+    // supervisor of a square (squareId). It is written with the event it
+    // reports, and afterwards only marked as read.
     match /notifications/{notificationId} {
       // Queries must filter on userId, or on squareId for a supervisor.
       allow read: if signedIn() && resource.data.userId == request.auth.uid;
@@ -440,18 +429,9 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])
         && request.resource.data.isRead == true;
 
-      // The student tells the supervisor of the examination's square that an
-      // examination was submitted, in the batch that submits it.
-      allow create: if isActiveStudent()
-        && validNotification()
-        && request.resource.data.type == 'exam_submitted'
-        && notificationId == request.resource.data.relatedId + '_submitted'
-        && request.resource.data.userId == null
-        && request.resource.data.squareId
-          == examData(request.resource.data.relatedId).squareId
-        && examData(request.resource.data.relatedId).studentId == request.auth.uid
-        && examData(request.resource.data.relatedId).status == 'in_progress'
-        && getAfter(/databases/$(database)/documents/exams/$(request.resource.data.relatedId)).data.status == 'pending_review';
+      // The `submitExam` Cloud Function tells the supervisor of the
+      // examination's square that an examination was submitted; no account
+      // writes that notification.
 
       // The supervisor tells the student that the result was approved, in the
       // batch that approves it.
@@ -485,59 +465,15 @@ service cloud.firestore {
         && data.createdAt == request.time;
     }
 
-    // One answer of a submission: {order, questionId, answer}.
-    function validAnswer(answer) {
-      return answer is map
-        && answer.keys().hasAll(['order', 'questionId', 'answer'])
-        && answer.keys().hasOnly(['order', 'questionId', 'answer'])
-        && answer.order is int
-        && answer.order >= 1
-        && answer.order <= 10
-        && answer.questionId is string
-        && answer.answer is string
-        && answer.answer.size() <= 500;
-    }
-
-    // One submission per examination, with the examination's ID. It is never
-    // changed after it is created. Not enforced here: that the recording
-    // exists in Storage, and that the answers match the examination's
-    // questions.
+    // One submission per examination, with the examination's ID. The
+    // `submitExam` Cloud Function creates it, after checking its ten answers
+    // against the ten questions of the examination; no account writes one,
+    // and it is never changed.
     match /submissions/{submissionId} {
       // A student's queries must filter on studentId.
       allow read: if signedIn() && resource.data.studentId == request.auth.uid;
 
       allow get: if isSupervisorOf(examData(submissionId).squareId);
-
-      allow create: if isActiveStudent()
-        && request.resource.data.keys().hasAll([
-          'examId', 'studentId', 'recordingUrl', 'answers', 'submittedAt',
-          'createdAt'
-        ])
-        && request.resource.data.keys().hasOnly([
-          'examId', 'studentId', 'recordingUrl', 'answers', 'submittedAt',
-          'createdAt'
-        ])
-        && request.resource.data.examId == submissionId
-        && request.resource.data.studentId == request.auth.uid
-        && request.resource.data.recordingUrl
-          == 'exam_recordings/' + submissionId + '/recitation.m4a'
-        && request.resource.data.answers is list
-        && request.resource.data.answers.size() == 10
-        && validAnswer(request.resource.data.answers[0])
-        && validAnswer(request.resource.data.answers[1])
-        && validAnswer(request.resource.data.answers[2])
-        && validAnswer(request.resource.data.answers[3])
-        && validAnswer(request.resource.data.answers[4])
-        && validAnswer(request.resource.data.answers[5])
-        && validAnswer(request.resource.data.answers[6])
-        && validAnswer(request.resource.data.answers[7])
-        && validAnswer(request.resource.data.answers[8])
-        && validAnswer(request.resource.data.answers[9])
-        && request.resource.data.submittedAt == request.time
-        && request.resource.data.createdAt == request.time
-        && get(/databases/$(database)/documents/exams/$(submissionId)).data.studentId == request.auth.uid
-        && get(/databases/$(database)/documents/exams/$(submissionId)).data.status == 'in_progress'
-        && getAfter(/databases/$(database)/documents/exams/$(submissionId)).data.status == 'pending_review';
     }
 
     match /exam_questions/{examQuestionId} {

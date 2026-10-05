@@ -16,7 +16,7 @@
 The following decisions are approved and take priority over any other wording in this document.
 
 1. **Scope:** Phase 1 is the current final project and the only phase being implemented now. Phase 2 and Phase 3 are Future Work only; no part of them is implemented now.
-2. **Cloud Functions:** Cloud Functions are not part of Phase 1 currently. They are added only if an essential Phase 1 requirement cannot be implemented securely and correctly without a trusted backend. Any such need is evaluated when the actual requirement is implemented. Cloud Functions are not considered part of the current architecture merely because they may be useful in the future.
+2. **Cloud Functions:** Cloud Functions are part of Phase 1 for one requirement only: submitting an examination and grading its theory questions (see Decision 14), which cannot be implemented securely and correctly without a trusted backend. The Firebase project therefore needs the Blaze plan. Anything else is added to Cloud Functions only if it is an essential Phase 1 requirement that cannot be implemented securely and correctly without a trusted backend; such a need is evaluated when the actual requirement is implemented. Cloud Functions are not used merely because they may be useful.
 3. **User registration:**
    * Students can self-register.
    * Students do not choose their role.
@@ -36,8 +36,14 @@ The following decisions are approved and take priority over any other wording in
 11. **Routing:** `go_router` is the approved centralized routing solution.
 12. **Existing placeholder files:** The empty files under `lib/` (all except `firebase_options.dart`) are rewritten from scratch according to the architecture in sections 38–42, each in its own implementation step. No unnecessary demo content is kept.
 13. **Packages and structure:** No package or structure outside this specification is added without a clear reason.
-14. **Trusted backend for examinations:** Creating an examination (choosing the segment and questions) and grading the theory questions are approved in principle to run in Cloud Functions, because they cannot be made secure from the client. This is deferred: no Cloud Functions, Blaze upgrade, or paid setup is done now. Until then the examination is created from the student's device behind a repository interface that a backend can replace. Known interim limits: the random selection is not enforced by the security rules, and the one-examination-per-course checks are enforced only in the application.
-15. **Correct answers:** `correctAnswer` is not stored in `question_bank`. It is stored in a separate `question_answers` collection, keyed by the question ID, that students cannot read.
+14. **Trusted backend for examinations:** Submitting an examination and grading its theory questions run in Cloud Functions, because they cannot be made secure from the client:
+   * When an examination is created, a function copies the correct answers of its ten questions into `exam_answer_keys/{examId}`. This snapshot is what the examination is graded with, whatever the question bank or the seed becomes later.
+   * The student submits through the `submitExam` callable function. In one transaction it saves the ten answers, calculates `theoryScore` out of 20 from the snapshot, saves it in `evaluations/{examId}` with `status = pending`, moves the examination to `pending_review` and notifies the supervisor.
+   * `theoryScore` is written by that function only. The student and the supervisor never write it, and the security rules refuse any change to it. The supervisor's device reads the saved score and never recalculates it.
+   * An examination that does not hold its ten questions and its ten answers is not submitted, gets no evaluation, and so cannot be approved.
+
+   Creating an examination (choosing the segment and questions) is approved in principle to move to Cloud Functions as well, and is still deferred: it is done from the student's device behind a repository interface that a backend can replace. Known interim limits: the random selection is not enforced by the security rules, and the one-examination-per-course checks are enforced only in the application.
+15. **Correct answers:** `correctAnswer` is not stored in `question_bank`. It is stored in a separate `question_answers` collection, keyed by the question ID, that no account can read: only the Cloud Functions read it. The correct answers of one examination are copied into `exam_answer_keys/{examId}`, which only the supervisor of the examination's square can read, and students never can.
 16. **Examination affiliation:** Each `exams` document stores the student's `mosqueId`, `squareId`, and `regionId` at the time the examination is started.
 17. **Examination limits:** A student has at most one open examination per course; starting again continues it with the same segment and questions. A new examination in a course cannot be started while one in that course is awaiting review. Examinations have no time limit.
 18. **Segment selection algorithm:** Among the active segments of the course, each segment's weight is `ruleDensity × the sum of the weights (from course_rules) of the course rules present in the segment`. One segment is chosen at random with probability proportional to its weight. Segments with zero weight are not eligible.
@@ -470,14 +476,15 @@ In Phase 1, `theoryScore` is calculated automatically when the student submits t
 
 `finalScore` is calculated from `recitationScore` (80) + `theoryScore` (20) after the recitation score becomes available.
 
-The detailed technical mechanism for secure grading does not need to be decided now. It is determined during implementation, together with the Firestore Security Rules. Cloud Functions are not assumed as the solution at this stage.
+The grading runs in a trusted backend, the `submitExam` Cloud Function (Approved Phase 1 Decision 14), in the same operation that saves the submission. It uses the answer key copied when the examination was created, so the result of a student stays the same even if a question, its answer or the seed changes later. Every question is worth two marks; an answer is correct when it is the correct answer word for word.
 
 In Phase 1, the source of the theory score is the system's automatic grading, not supervisor entry.
 
 * The supervisor enters the recitation score only, out of 80.
 * The system calculates the theory score out of 20 automatically.
-* The supervisor can review the student's answers, but cannot modify the theory score calculated by the system.
-* The system then calculates the final score using the formula above.
+* The supervisor can review the student's answers, but cannot modify the theory score calculated by the system. The supervisor's device reads the saved score; it does not calculate it.
+* The system then calculates the final score using the formula above. The security rules accept an approval only when its final score is the entered recitation score plus the saved theory score.
+* An examination without a saved theory score (one that was not submitted with its ten questions and its ten answers) cannot be approved.
 
 ---
 
@@ -576,13 +583,21 @@ The project uses:
 Firebase Authentication
 Cloud Firestore
 Firebase Storage
+Cloud Functions (2nd generation, Node.js)
 ```
 
-Cloud Functions are not part of Phase 1 currently and are not part of the current architecture.
+Cloud Functions are the trusted backend of the examination only (Approved Phase 1 Decisions 2 and 14). They live in `functions/` and need the Blaze plan:
 
-* Cloud Functions are added only if an essential Phase 1 requirement cannot be implemented securely and correctly without a trusted backend.
-* Any future need for Cloud Functions is evaluated when the actual requirement is implemented.
-* Cloud Functions are not considered part of the current architecture merely because they may be useful in the future.
+| Function | Kind | What it does |
+|---|---|---|
+| `snapshotExamAnswerKey` | Firestore trigger, on the creation of `exams/{examId}` | Copies the correct answers of the ten questions into `exam_answer_keys/{examId}`. Retried until it succeeds; never replaces a stored key. |
+| `submitExam` | Callable, called by the student's app | Checks the examination and its ten answers, grades them, and writes the submission, the pending evaluation, the examination's status and the supervisor's notification in one transaction. |
+
+Both run in the region `us-central1`, the region the app calls.
+
+* Anything else is added to Cloud Functions only if it is an essential Phase 1 requirement that cannot be implemented securely and correctly without a trusted backend.
+* Any such need is evaluated when the actual requirement is implemented.
+* Cloud Functions are not used merely because they may be useful.
 
 ---
 
@@ -648,6 +663,7 @@ exam_segments
 question_bank
 question_answers
 exam_questions
+exam_answer_keys
 submissions
 evaluations
 certificates
@@ -902,7 +918,7 @@ correctAnswer
 
 `correctAnswer` must not be sent to the student application during the examination, and must not be included in any examination data the student can read.
 
-Students cannot read `question_answers` through Firestore.
+No account can read `question_answers` through Firestore: not the student, and not the supervisor. Only the Cloud Functions read it, to copy the answer key of an examination (section 31).
 
 ---
 
@@ -943,6 +959,25 @@ The selected questions for an individual examination should be associated with t
 
 The system must preserve the exact questions presented to the student at the time of the examination.
 
+## Answer key
+
+The correct answers of those questions are preserved as well, apart from them, so that the student cannot read them:
+
+```text
+exam_answer_keys/{examId}
+
+examId
+answers       (ten of: order, questionId, correctAnswer)
+source
+createdAt
+```
+
+* The `snapshotExamAnswerKey` Cloud Function writes it when the examination is created, from `question_answers` as it is at that moment (`source = exam_created`).
+* It is never changed or replaced afterwards. The theory score is calculated from it, not from `question_answers`, so changing a question, its answer or the seed later does not change the result of an examination that was already created.
+* If the key is not stored yet when the student submits, `submitExam` copies it in the same transaction (`source = submission`) and it is kept from then on. `source = backfill` marks a key written by the one-time tool for examinations submitted before this mechanism existed (section 57).
+* An examination without ten stored questions, or with a question whose correct answer is not stored, gets no key.
+* Only the Cloud Functions write it. Only the supervisor of the examination's square reads it, one document at a time, to see which answers were correct. Students, and supervisors of other squares, cannot read it.
+
 ---
 
 # 32. Submissions
@@ -964,6 +999,14 @@ The student's `answers` are linked to the selected questions of that examination
 
 `submittedAt` records the time the examination was submitted. `submissions` does not hold the score; `theoryScore` is stored in `evaluations`.
 
+The submission is written by the `submitExam` Cloud Function only; the security rules give no account write access to `submissions`. The function accepts it only when:
+
+* the caller is an active student and the examination is theirs and still `in_progress`;
+* the examination holds its ten questions in `exam_questions`;
+* `answers` holds exactly ten answers, one for each question, each `{order, questionId, answer}`, naming the question at that order and one of its options.
+
+Otherwise nothing is written and the student is told why. An examination is submitted once: the submission has the examination's ID.
+
 The original student submission should remain preserved.
 
 ---
@@ -979,18 +1022,22 @@ examId
 supervisorId
 recitationScore
 theoryScore
+correctCount
 finalScore
 result
 feedback
 detailedErrors
 status
+gradedAt
 reviewedAt
 approvedAt
 ```
 
+`evaluationId` is the examination's ID. `correctCount` is the number of correct answers out of ten, and `gradedAt` the time the theory score was saved. An evaluation approved before these two fields existed does not have them.
+
 `feedback` holds the supervisor's general notes (up to 2000 characters), or `null`.
 
-`detailedErrors` is the list of Tajweed errors the supervisor recorded in the recitation, at most 20, written once with the evaluation and never changed. Each error is:
+`detailedErrors` is the list of Tajweed errors the supervisor recorded in the recitation, at most 20, written once when the result is approved and never changed. Each error is:
 
 ```text
 id
@@ -1018,9 +1065,13 @@ passed   (Final Score >= 70)
 failed   (Final Score < 70)
 ```
 
-The system creates the `evaluations` record after the student submits the examination.
+The system creates the `evaluations` record when the student submits the examination: the `submitExam` Cloud Function writes it, in the transaction that saves the submission, with `status = pending`. No account can create an evaluation.
 
-* When the record is created, `theoryScore` is already calculated automatically (out of 20), while `recitationScore` is still waiting for the supervisor's review.
+* When the record is created, `theoryScore` is already calculated automatically (out of 20), while `recitationScore`, `finalScore`, `result`, `feedback`, `reviewedAt` and `approvedAt` are `null`, `detailedErrors` is empty, and everything is still waiting for the supervisor's review.
+* `theoryScore` is trusted and final from that moment: only the Cloud Function writes it, and the security rules refuse any write that changes it, by the supervisor as by anyone else.
+* The supervisor approves the result by updating the pending record once, in the batch that moves the examination to `approved`: `supervisorId`, `recitationScore`, `finalScore`, `result`, `feedback`, `detailedErrors`, `status = approved`, `reviewedAt` and `approvedAt`, and nothing else. The rules require `finalScore` to be the entered `recitationScore` plus the saved `theoryScore`, and `result` to follow from it. An approved record is never changed.
+* An examination without a pending evaluation cannot be approved. This is how an examination that lacks its ten questions or its ten answers stays unapproved.
+* The student reads the evaluation only once its `status` is `approved`, so the theory score is not shown before the result. The supervisor of the square, the Region Officer of the region and the General Admin read it in both states.
 * The supervisor is allowed to enter `recitationScore` only (out of 80), within the supervisor's permissions. The supervisor does not write or modify `theoryScore`.
 * `finalScore` is calculated from `recitationScore` (80) + `theoryScore` (20) after the recitation score becomes available.
 * The student is not allowed to write to or modify `evaluations`.
@@ -1069,6 +1120,8 @@ createdAt
 ```
 
 A notification is addressed either to one account (`userId`, with `squareId = null`) or to the supervisor of a square (`squareId`, with `userId = null`). `relatedId` is the ID of the examination. Notifications are shown inside the application; there are no push notifications in Phase 1.
+
+The notification of a submitted examination (`{examId}_submitted`) is written by the `submitExam` Cloud Function. The notification of an approved result (`{examId}_result`) is written by the supervisor's device, in the batch that approves it.
 
 ---
 
@@ -1540,6 +1593,7 @@ Testing should verify:
 * Certificate generation.
 * Notifications.
 * Security rules.
+* Cloud Functions.
 * Data consistency.
 
 ---
@@ -1627,7 +1681,7 @@ AI is not part of Phase 1.
 Figma MCP is connected to Claude Code.
 ```
 
-Open items: Cloud Functions are deferred (see Approved Phase 1 Decision 14). The approved Quran text and Mushaf font are added (see Approved Phase 1 Decision 19 and "Quran content" below).
+Open items: creating the examination in Cloud Functions is still deferred (see Approved Phase 1 Decision 14); submitting and grading it now run there (see "Trusted grading" below, which supersedes what steps 12 to 15 say about the submission batch, the theory score and `question_answers`). The approved Quran text and Mushaf font are added (see Approved Phase 1 Decision 19 and "Quran content" below).
 
 Recording (step 10): the recitation is uploaded to `exam_recordings/{examId}/recitation.m4a`, and re-recording is allowed while the examination is `in_progress`. `recordingUrl` is written to `submissions` in step 12. `storage.rules` is not deployed yet, and recording has not been tested on a device.
 
@@ -1649,9 +1703,20 @@ Known limits of step 14: an account can be suspended (`isActive = false`) but no
 
 Step 15 (Security Rules): `firestore.rules` and `storage.rules` were reviewed and tightened; no screen or feature changed. The unused `students` collection and the `admin` custom-claim path were removed, so access comes only from the `users` document. A supervisor without a square reads no `question_answers`. A suspended student can no longer submit an examination, write its submission or notification, or upload a recording. An examination must carry string `mosqueId`, `squareId` and `regionId`, and they never change afterwards. Regions, squares and mosques accept only their known fields; `createdAt` and a square's `regionId` never change; `officerId` and `supervisorId` can only name an account that holds that role over that unit. Each answer of a submission must be `{order, questionId, answer}`. Staff read a recording only after the examination is submitted.
 
-Not enforceable by the rules alone, without a trusted backend: that `theoryScore` matches the answers; that a supervisor reads only the `question_answers` of their own square's examinations; the random choice of the segment and questions, and that `exam_questions` copy `question_bank`; one open examination per course; that the recording exists when the examination is submitted; one supervisor per square and one officer per region; that a mosque's students move with it; the text of a notification.
+Not enforceable by the rules alone, without a trusted backend: the random choice of the segment and questions, and that `exam_questions` copy `question_bank`; one open examination per course; that the recording exists when the examination is submitted; one supervisor per square and one officer per region; that a mosque's students move with it; the text of the approval notification. (That `theoryScore` matches the answers, and who reads the correct answers, were on this list and are now enforced: see "Trusted grading" below.)
 
-The rules are tested locally against the Firebase Emulator Suite: `rules_test/rules.test.mjs`, run with `npm run test:emulator` inside `rules_test`, under the project ID `demo-quran-exam`. All 114 tests pass. These tests never touch a real Firebase project. The updated rules are not deployed and have not been run against the real Firebase project. The next step is Implementation Order step 16.
+The rules are tested locally against the Firebase Emulator Suite: `rules_test/rules.test.mjs`, run with `npm run test:emulator` inside `rules_test`, under the project ID `demo-quran-exam`. All 124 tests pass (114 before "Trusted grading" below). These tests never touch a real Firebase project. The updated rules are not deployed and have not been run against the real Firebase project. The next step is Implementation Order step 16.
+
+Trusted grading (Approved Phase 1 Decisions 2, 14 and 15; sections 14, 19 and 30 to 33): the theory score is calculated and saved by a trusted backend when the student submits, instead of on the supervisor's device when the result is approved. This supersedes the following parts of steps 12 to 15 above: the student's submission batch and its notification (now the `submitExam` function); the theory score calculated on the supervisor's device and the supervisor reading `question_answers` (now the saved score and `exam_answer_keys`); the evaluation created on approval with no `pending` state (now created on submission as `pending` and completed on approval, as section 33 always described).
+
+* Cloud Functions (`functions/`, JavaScript, `firebase-functions` 2nd generation): `snapshotExamAnswerKey` and `submitExam`, as section 19 describes. The checks and the scoring are in `functions/src/grading.js`, apart from Firestore.
+* Application: the student's app calls `submitExam` (`FunctionsSubmissionRepository`, package `cloud_functions`) and writes none of the documents of a submission. The supervisor's review reads the saved theory score from the evaluation and the correct answers from `exam_answer_keys`; the scoring that was in `ExamScoring.theoryScore` is removed from the app. Approving updates the pending evaluation instead of creating one, and never sends `theoryScore`. The student's result screen reads the evaluation only for an approved examination.
+* Security rules: no account creates a submission, moves an examination to `pending_review`, writes the submission notification, creates an evaluation or reads `question_answers`. The supervisor's approval is an update of a `pending` evaluation that cannot touch `theoryScore`, and the examination is approved only together with it. `exam_answer_keys` is readable by the supervisor of the examination's square only and writable by nobody.
+* Existing data: an approved examination is not touched; its evaluation already holds every field. An examination that was submitted before this change has no pending evaluation and cannot be approved until it is graded by the one-time tool `functions/tools/backfill_pending.mjs` (`--dry-run` or `--apply`, with `--project`). The tool grades only an examination awaiting review that holds its ten questions and its ten answers, with `question_answers` as it is when the tool runs, since no earlier snapshot exists. An incomplete examination is listed and left exactly as it is: it stays stored as historical data, and nothing grades or approves it. An examination still in progress needs nothing: its key is copied when it is submitted.
+* Deployment order, when it is done: the functions, then the backfill tool, then the security rules together with the new version of the app. An older version of the app can no longer submit or approve once the new rules are deployed.
+* Tests, all local: `functions/test/grading.test.mjs` (the checks and the scoring, no emulator), `functions/test/exam_functions.test.mjs` (the functions and the backfill against the Firestore emulator; `npm run test:emulator` inside `functions`), `functions/test/deployed_functions.test.mjs` (the trigger and the callable function on the Functions, Firestore and Authentication emulators; `npm run test:emulator:deployed`), the security rules tests above, and the Flutter tests.
+
+Known limits of trusted grading: nothing is deployed, and neither the functions nor the new rules have been run against the real Firebase project or on a device. The questions of an examination are still chosen and written by the student's device, so the key is the correct answers of whatever questions it wrote (Decision 14). `submitExam` does not check that the recording exists in Storage; the app does, before calling it. The answer key is copied a moment after the examination is created, not in the same write. Submitting needs a connection: it cannot be queued offline. The functions and the app must use the same region.
 
 Question bank content (sections 30 and 13): the theory questions and their answers are defined in the application as seed data (`features/questions/data/seed`) and written by `CurriculumSeeder` after the courses, the Tajweed rules and their links. No screen, security rule, selection or scoring logic changed.
 

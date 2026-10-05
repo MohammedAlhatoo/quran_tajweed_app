@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/exam.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/exam_status.dart';
 import 'package:quran_tajweed_app/features/exams/domain/entities/recitation_error.dart';
-import 'package:quran_tajweed_app/features/notifications/data/repositories/firestore_notifications_repository.dart';
 import 'package:quran_tajweed_app/features/supervisor/data/repositories/firebase_review_repository.dart';
 
 const _exam = Exam(
@@ -17,10 +16,19 @@ const _exam = Exam(
   regionId: 'region-1',
 );
 
+/// The documents created by an approval, with a saved theory score of 18.
 Map<String, Map<String, dynamic>> _approve(int recitationScore) {
   return FirebaseReviewRepository.approvalDocuments(
     exam: _exam,
     courseName: 'تمهيدية',
+    recitationScore: recitationScore,
+    theoryScore: 18,
+  );
+}
+
+/// What an approval adds to the evaluation, with a saved theory score of 18.
+Map<String, dynamic> _evaluation(int recitationScore) {
+  return FirebaseReviewRepository.evaluationApproval(
     supervisorId: 'sup-1',
     recitationScore: recitationScore,
     theoryScore: 18,
@@ -32,7 +40,7 @@ void main() {
     test('a passed examination gets a certificate and a notification', () {
       final documents = _approve(60);
 
-      expect(documents['evaluations/exam-1']!['result'], 'passed');
+      expect(_evaluation(60)['result'], 'passed');
       final certificate = documents['certificates/exam-1']!;
       expect(certificate['studentId'], 'uid-1');
       expect(certificate['courseId'], 'course-1');
@@ -49,9 +57,8 @@ void main() {
     test('a failed examination gets a notification but no certificate', () {
       final documents = _approve(40);
 
-      expect(documents['evaluations/exam-1']!['result'], 'failed');
-      expect(documents.keys, isNot(contains('certificates/exam-1')));
-      expect(documents, hasLength(2));
+      expect(_evaluation(40)['result'], 'failed');
+      expect(documents.keys, ['notifications/exam-1_result']);
       expect(
         documents['notifications/exam-1_result']!['body'],
         contains('راسب'),
@@ -60,9 +67,7 @@ void main() {
 
     test('the evaluation holds the notes and the detailed errors', () {
       final recordedAt = DateTime(2026, 10, 3, 9);
-      final documents = FirebaseReviewRepository.approvalDocuments(
-        exam: _exam,
-        courseName: 'تمهيدية',
+      final evaluation = FirebaseReviewRepository.evaluationApproval(
         supervisorId: 'sup-1',
         recitationScore: 60,
         theoryScore: 18,
@@ -86,10 +91,8 @@ void main() {
         ],
       );
 
-      final evaluation = documents['evaluations/exam-1']!;
       expect(evaluation['supervisorId'], 'sup-1');
       expect(evaluation['recitationScore'], 60);
-      expect(evaluation['theoryScore'], 18);
       expect(evaluation['finalScore'], 78);
       expect(evaluation['result'], 'passed');
       expect(evaluation['status'], 'approved');
@@ -114,13 +117,40 @@ void main() {
           'createdAt': Timestamp.fromDate(recordedAt),
         },
       ]);
-      // The certificate and the notification are issued as before.
-      expect(documents.keys, contains('certificates/exam-1'));
-      expect(documents.keys, contains('notifications/exam-1_result'));
+    });
+
+    test('the approval never writes the theory score or a new evaluation', () {
+      // The theory score is saved on submission; the security rules refuse
+      // an approval that touches it.
+      expect(_evaluation(60).keys, isNot(contains('theoryScore')));
+      expect(_evaluation(60).keys, isNot(contains('examId')));
+      expect(_evaluation(60).keys.toSet(), {
+        'supervisorId',
+        'recitationScore',
+        'finalScore',
+        'result',
+        'feedback',
+        'detailedErrors',
+        'status',
+        'reviewedAt',
+        'approvedAt',
+      });
+      expect(_approve(60).keys, isNot(contains('evaluations/exam-1')));
+    });
+
+    test('the final score is the recitation plus the saved theory score', () {
+      final evaluation = FirebaseReviewRepository.evaluationApproval(
+        supervisorId: 'sup-1',
+        recitationScore: 55,
+        theoryScore: 14,
+      );
+
+      expect(evaluation['finalScore'], 69);
+      expect(evaluation['result'], 'failed');
     });
 
     test('an evaluation without notes or errors stores an empty list', () {
-      final evaluation = _approve(60)['evaluations/exam-1']!;
+      final evaluation = _evaluation(60);
 
       expect(evaluation['feedback'], isNull);
       expect(evaluation['detailedErrors'], isEmpty);
@@ -132,17 +162,25 @@ void main() {
     });
   });
 
-  test('a submission notifies the square of the examination, unread', () {
-    final (id, data) = FirestoreNotificationsRepository.examSubmitted(
-      examId: 'exam-1',
-      squareId: 'square-1',
-      studentName: 'أحمد',
-    );
+  group('the answer key of an examination', () {
+    test('is read by the order of the question', () {
+      expect(
+        FirebaseReviewRepository.answerKeyFrom({
+          'examId': 'exam-1',
+          'answers': [
+            {'order': 1, 'questionId': 'q1', 'correctAnswer': 'أ'},
+            {'order': 2, 'questionId': 'q2', 'correctAnswer': 'ب'},
+            {'order': 3, 'questionId': 'q3'},
+            'not an answer',
+          ],
+        }),
+        {1: 'أ', 2: 'ب'},
+      );
+    });
 
-    expect(id, 'exam-1_submitted');
-    expect(data['squareId'], 'square-1');
-    expect(data['userId'], isNull);
-    expect(data['relatedId'], 'exam-1');
-    expect(data['isRead'], isFalse);
+    test('is empty for an examination without one', () {
+      expect(FirebaseReviewRepository.answerKeyFrom(null), isEmpty);
+      expect(FirebaseReviewRepository.answerKeyFrom(const {}), isEmpty);
+    });
   });
 }
