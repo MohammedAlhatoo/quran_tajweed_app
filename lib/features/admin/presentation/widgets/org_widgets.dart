@@ -251,25 +251,38 @@ Future<Map<String, String?>?> showOrgForm(
   );
 }
 
-/// Asks to confirm [message]. Returns true when confirmed.
+/// Asks to confirm [message]. Returns true when confirmed. A [destructive]
+/// action cannot be undone, and its confirmation is shown as a warning.
 Future<bool> confirmOrgAction(
   BuildContext context, {
   required String title,
   required String message,
   required String confirmLabel,
+  bool destructive = false,
 }) async {
+  // Only the first press answers, so a double press closes nothing else.
+  var answered = false;
+  void answer(BuildContext context, bool confirmed) {
+    if (answered) return;
+    answered = true;
+    Navigator.of(context).pop(confirmed);
+  }
+
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
       title: Text(title),
-      content: Text(message),
+      content: SingleChildScrollView(child: Text(message)),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: () => answer(context, false),
           child: const Text('إلغاء'),
         ),
         TextButton(
-          onPressed: () => Navigator.of(context).pop(true),
+          style: destructive
+              ? TextButton.styleFrom(foregroundColor: AppColors.danger)
+              : null,
+          onPressed: () => answer(context, true),
           child: Text(confirmLabel),
         ),
       ],

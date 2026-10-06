@@ -69,9 +69,40 @@ abstract interface class OrganizationRepository {
   });
 
   /// Activates or suspends an account. A suspended account cannot sign in.
+  ///
+  /// A suspended square supervisor leaves every square that names them, so
+  /// the squares can be given to another supervisor. The squares, their
+  /// mosques, students and examinations are kept.
   Future<void> setAccountActive({
+    required AdminScope scope,
     required AppUser user,
     required bool isActive,
+  });
+
+  /// Deletes the account of a region officer or a square supervisor, and
+  /// clears it from every region or square that names it. Only the General
+  /// Admin may, and never their own account. Nothing else is deleted.
+  Future<void> deleteStaff({required AdminScope scope, required AppUser user});
+
+  /// Deletes [square] when it has no mosques, students or examinations, and
+  /// leaves its supervisor without a square. Only the General Admin may.
+  Future<void> deleteSquare({
+    required AdminScope scope,
+    required Square square,
+  });
+
+  /// Deletes [mosque] when it has no students or examinations. Only the
+  /// General Admin may.
+  Future<void> deleteMosque({
+    required AdminScope scope,
+    required Mosque mosque,
+  });
+
+  /// Deletes [region] when it has no squares, mosques, accounts or
+  /// examinations. Only the General Admin may.
+  Future<void> deleteRegion({
+    required AdminScope scope,
+    required Region region,
   });
 
   /// Emails [email] a link to set a new password.

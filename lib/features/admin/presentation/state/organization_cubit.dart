@@ -149,8 +149,32 @@ class OrganizationCubit extends Cubit<OrganizationState> {
     required AppUser user,
     required bool isActive,
   }) => _change(
-    () => _repository.setAccountActive(user: user, isActive: isActive),
+    () => _repository.setAccountActive(
+      scope: scope,
+      user: user,
+      isActive: isActive,
+    ),
     success: isActive ? 'تم تفعيل الحساب.' : 'تم إيقاف الحساب.',
+  );
+
+  Future<void> deleteStaff(AppUser user) => _change(
+    () => _repository.deleteStaff(scope: scope, user: user),
+    success: 'تم حذف الحساب.',
+  );
+
+  Future<void> deleteSquare(Square square) => _change(
+    () => _repository.deleteSquare(scope: scope, square: square),
+    success: 'تم حذف المربع.',
+  );
+
+  Future<void> deleteMosque(Mosque mosque) => _change(
+    () => _repository.deleteMosque(scope: scope, mosque: mosque),
+    success: 'تم حذف المسجد.',
+  );
+
+  Future<void> deleteRegion(Region region) => _change(
+    () => _repository.deleteRegion(scope: scope, region: region),
+    success: 'تم حذف المنطقة.',
   );
 
   Future<void> sendPasswordReset(String email) => _change(

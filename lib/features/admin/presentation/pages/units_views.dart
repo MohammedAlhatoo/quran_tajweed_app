@@ -8,6 +8,21 @@ import '../../domain/entities/organization.dart';
 import '../state/organization_cubit.dart';
 import '../widgets/org_widgets.dart';
 
+/// Asks to confirm deleting [name], saying [note] about what is kept. The
+/// repository refuses a unit that still holds data.
+Future<bool> _confirmDelete(
+  BuildContext context, {
+  required String title,
+  required String name,
+  required String note,
+}) => confirmOrgAction(
+  context,
+  title: title,
+  message: 'سيُحذف «$name» نهائيًا، ولا يمكن التراجع عن الحذف. $note',
+  confirmLabel: 'حذف نهائي',
+  destructive: true,
+);
+
 /// The regions of the system. Only the General Admin manages them.
 class RegionsView extends StatelessWidget {
   const RegionsView({super.key});
@@ -35,6 +50,22 @@ class RegionsView extends StatelessWidget {
       name: values['name']!,
       isActive: region?.isActive ?? true,
     );
+  }
+
+  Future<void> _delete(
+    BuildContext context,
+    OrganizationCubit cubit,
+    Region region,
+  ) async {
+    final confirmed = await _confirmDelete(
+      context,
+      title: 'حذف المنطقة',
+      name: region.name,
+      note:
+          'تُحذف المنطقة الفارغة فقط: إن كان فيها مربعات أو مساجد أو حسابات '
+          'أو امتحانات فلن يُحذف شيء.',
+    );
+    if (confirmed) await cubit.deleteRegion(region);
   }
 
   @override
@@ -65,6 +96,7 @@ class RegionsView extends StatelessWidget {
                     isActive: !region.isActive,
                   ),
                 ),
+                ('حذف المنطقة', () => _delete(context, cubit, region)),
               ],
             ),
         ],
@@ -116,6 +148,22 @@ class SquaresView extends StatelessWidget {
     );
   }
 
+  Future<void> _delete(
+    BuildContext context,
+    OrganizationCubit cubit,
+    Square square,
+  ) async {
+    final confirmed = await _confirmDelete(
+      context,
+      title: 'حذف المربع',
+      name: square.name,
+      note:
+          'يُحذف المربع الفارغ فقط: إن كان فيه مساجد أو طلاب أو امتحانات '
+          'فلن يُحذف شيء. يبقى حساب مشرفه بدون مربع، وتبقى المنطقة.',
+    );
+    if (confirmed) await cubit.deleteSquare(square);
+  }
+
   @override
   Widget build(BuildContext context) {
     return OrganizationView(
@@ -150,6 +198,9 @@ class SquaresView extends StatelessWidget {
                     isActive: !square.isActive,
                   ),
                 ),
+                // Only the General Admin deletes.
+                if (cubit.scope.isSystem)
+                  ('حذف المربع', () => _delete(context, cubit, square)),
               ],
             ),
         ],
@@ -267,6 +318,22 @@ class MosquesView extends StatelessWidget {
     if (confirmed) await cubit.moveMosque(mosque: mosque, square: square);
   }
 
+  Future<void> _delete(
+    BuildContext context,
+    OrganizationCubit cubit,
+    Mosque mosque,
+  ) async {
+    final confirmed = await _confirmDelete(
+      context,
+      title: 'حذف المسجد',
+      name: mosque.name,
+      note:
+          'يُحذف المسجد الفارغ فقط: إن كان فيه طلاب أو امتحانات فلن يُحذف '
+          'شيء. يبقى مربعه ومنطقته.',
+    );
+    if (confirmed) await cubit.deleteMosque(mosque);
+  }
+
   @override
   Widget build(BuildContext context) {
     return OrganizationView(
@@ -303,6 +370,9 @@ class MosquesView extends StatelessWidget {
                       isActive: !mosque.isActive,
                     ),
                   ),
+                // Only the General Admin deletes.
+                if (cubit.scope.isSystem)
+                  ('حذف المسجد', () => _delete(context, cubit, mosque)),
               ],
             ),
         ],

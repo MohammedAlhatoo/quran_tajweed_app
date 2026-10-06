@@ -98,8 +98,16 @@ service cloud.firestore {
           && userDataAfter(linked)[scopeField] == unitId);
     }
 
+    // Whether the region or square [unitId] of [unit] still names the account
+    // [uid] in [field] once the current batch is applied.
+    function namesAfter(unit, unitId, field, uid) {
+      return unitId is string
+        && existsAfter(/databases/$(database)/documents/$(unit)/$(unitId))
+        && getAfter(/databases/$(database)/documents/$(unit)/$(unitId)).data.get(field, null) == uid;
+    }
+
     // Regions are managed by the General Admin only. An officer reads their
-    // own region. Nothing is deleted; a region is deactivated instead.
+    // own region.
     match /regions/{regionId} {
       allow read: if isGeneralAdmin() || isOfficerOf(regionId);
 
@@ -124,6 +132,11 @@ service cloud.firestore {
         && validUnitLink('officerId', 'region_officer', 'regionId', regionId)
         && request.resource.data.isActive is bool
         && request.resource.data.updatedAt == request.time;
+
+      // Only the General Admin deletes a region. Not enforced here: that it
+      // holds no squares, mosques, accounts or examinations; the application
+      // checks that before it deletes.
+      allow delete: if isGeneralAdmin();
     }
 
     // Squares are managed by the General Admin and by the officer of their
@@ -153,6 +166,11 @@ service cloud.firestore {
         && validUnitLink('supervisorId', 'square_supervisor', 'squareId', squareId)
         && request.resource.data.isActive is bool
         && request.resource.data.updatedAt == request.time;
+
+      // Only the General Admin deletes a square, never the officer of its
+      // region. Not enforced here: that it holds no mosques, students or
+      // examinations; the application checks that before it deletes.
+      allow delete: if isGeneralAdmin();
     }
 
     // Active mosques are readable before sign-in so a student can choose one
@@ -194,6 +212,11 @@ service cloud.firestore {
         && squareData(request.resource.data.squareId).regionId
           == request.resource.data.regionId
         && request.resource.data.updatedAt == request.time;
+
+      // Only the General Admin deletes a mosque. Not enforced here: that it
+      // holds no students or examinations; the application checks that
+      // before it deletes.
+      allow delete: if isGeneralAdmin();
     }
 
     // Course content is readable by any signed-in user.
@@ -544,7 +567,8 @@ service cloud.firestore {
     // named by its UID, to a role and a scope the administrator manages. The
     // invited account then creates its own users document from it. An
     // invitation holds no password and is never changed; the administrator
-    // who wrote it can delete it while it is unused.
+    // who wrote it can delete it while it is unused, and the General Admin
+    // deletes it together with the account it created.
     match /staff_invites/{uid} {
       allow get: if signedIn()
         && (request.auth.uid == uid || managesRegion(resource.data.regionId));
@@ -572,6 +596,9 @@ service cloud.firestore {
       allow delete: if signedIn()
         && resource.data.createdBy == request.auth.uid
         && !exists(/databases/$(database)/documents/users/$(uid));
+
+      allow delete: if isGeneralAdmin()
+        && !existsAfter(/databases/$(database)/documents/users/$(uid));
     }
 
     match /users/{uid} {
@@ -659,6 +686,18 @@ service cloud.firestore {
               == mosqueDataAfter(resource.data.mosqueId).squareId
             && request.resource.data.regionId
               == mosqueDataAfter(resource.data.mosqueId).regionId));
+
+      // Only the General Admin deletes an account, only that of a region
+      // officer or a square supervisor, and never their own. The same batch
+      // must delete its invitation, so the account cannot write its profile
+      // again, and clear it from the region or square it belongs to. A
+      // student or a General Admin account is never deleted.
+      allow delete: if isGeneralAdmin()
+        && request.auth.uid != uid
+        && resource.data.role in ['region_officer', 'square_supervisor']
+        && !existsAfter(/databases/$(database)/documents/staff_invites/$(uid))
+        && !namesAfter('regions', resource.data.get('regionId', null), 'officerId', uid)
+        && !namesAfter('squares', resource.data.get('squareId', null), 'supervisorId', uid);
     }
   }
 }

@@ -157,12 +157,33 @@ class _AccountsViewState extends State<AccountsView> {
       title: user.isActive ? 'إيقاف الحساب' : 'تفعيل الحساب',
       message: user.isActive
           ? 'لن يتمكن ${user.name} من تسجيل الدخول حتى يُفعَّل الحساب.'
+                '${user.role == UserRole.squareSupervisor ? ' يُلغى ربطه بمربعه ليُعيَّن له مشرف آخر.' : ''}'
           : 'سيتمكن ${user.name} من تسجيل الدخول من جديد.',
       confirmLabel: user.isActive ? 'إيقاف' : 'تفعيل',
     );
     if (confirmed) {
       await cubit.setAccountActive(user: user, isActive: !user.isActive);
     }
+  }
+
+  Future<void> _delete(OrganizationCubit cubit, AppUser user) async {
+    final kept = user.role == UserRole.regionOfficer
+        ? 'يُلغى ربطه بمنطقته، وتبقى المنطقة ومربعاتها ومساجدها وطلابها '
+              'وامتحاناتها كما هي.'
+        : 'يُلغى ربطه بمربعه، ويبقى المربع ومساجده وطلابه وامتحاناته '
+              'ونتائجه وشهاداته كما هي.';
+    final confirmed = await confirmOrgAction(
+      context,
+      title: 'حذف الحساب',
+      message:
+          'سيُحذف حساب «${user.name}» (${user.email}) نهائيًا، ولن يتمكن من '
+          'الدخول إلى التطبيق. $kept\n\n'
+          'لا يمكن التراجع عن الحذف. يبقى البريد محجوزًا في Firebase '
+          'Authentication إلى أن يُحذف من Firebase Console.',
+      confirmLabel: 'حذف نهائي',
+      destructive: true,
+    );
+    if (confirmed) await cubit.deleteStaff(user);
   }
 
   List<String> _scopeLines(
@@ -240,6 +261,9 @@ class _AccountsViewState extends State<AccountsView> {
                   user.isActive ? 'إيقاف الحساب' : 'تفعيل الحساب',
                   () => _toggleActive(cubit, user),
                 ),
+                // Only the General Admin deletes, and only staff accounts.
+                if (isStaff && cubit.scope.isSystem)
+                  ('حذف الحساب', () => _delete(cubit, user)),
               ],
             ),
         ],

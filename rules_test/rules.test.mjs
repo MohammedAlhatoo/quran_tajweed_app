@@ -879,7 +879,7 @@ describe('denied: ordinary users on administrative data', () => {
       updateDoc(doc(db('admin'), 'users/stu1'), { role: 'general_admin', updatedAt: now() }),
     );
     await assertFails(deleteDoc(doc(db('admin'), 'users/stu1')));
-    await assertFails(deleteDoc(doc(db('admin'), 'regions/r1')));
+    await assertFails(deleteDoc(doc(db('admin'), 'users/admin')));
   });
 });
 
@@ -1747,5 +1747,233 @@ describe('batches: staff (validUnitLink, getAfter on the account)', () => {
         createdAt: now(), updatedAt: now(),
       }),
     );
+  });
+});
+
+// ===========================================================================
+// Deleting: only the General Admin, only staff accounts and units, and never
+// the curriculum or the examination data.
+// ===========================================================================
+
+// What the application writes to delete a staff account: the units that name
+// it are cleared, and its invitation and its users document are deleted.
+function deleteStaffBatch(uid, target, units = [], parts = {}) {
+  const firestore = db(uid);
+  const batch = writeBatch(firestore);
+  for (const path of units) {
+    const field = path.startsWith('regions/') ? 'officerId' : 'supervisorId';
+    batch.update(doc(firestore, path), { [field]: null, updatedAt: now() });
+  }
+  if (parts.invite ?? true) batch.delete(doc(firestore, `staff_invites/${target}`));
+  for (const path of parts.also ?? []) batch.delete(doc(firestore, path));
+  batch.delete(doc(firestore, `users/${target}`));
+  return batch;
+}
+
+// What the application writes to suspend a supervisor.
+function suspendSupervisorBatch(uid, target, squares) {
+  const firestore = db(uid);
+  const batch = writeBatch(firestore);
+  for (const square of squares) {
+    batch.update(doc(firestore, `squares/${square}`), { supervisorId: null, updatedAt: now() });
+  }
+  batch.update(doc(firestore, `users/${target}`), {
+    isActive: false, squareId: null, updatedAt: now(),
+  });
+  return batch;
+}
+
+const everyoneElse = [
+  'officer1', 'officer2', 'sup1', 'sup2', 'supNoSquare', 'supInactive',
+  'stu1', 'stuSuspended', 'ghost',
+];
+
+describe('batches: suspending a supervisor frees the square', () => {
+  test('General Admin suspends a supervisor and clears the square', async () => {
+    await assertSucceeds(suspendSupervisorBatch('admin', 'sup1', ['s1']).commit());
+    await env.withSecurityRulesDisabled(async (context) => {
+      const square = await getDoc(doc(context.firestore(), 'squares/s1'));
+      assert.equal(square.data().supervisorId, null);
+      assert.equal((await getDoc(doc(context.firestore(), 'mosques/m1'))).exists(), true);
+    });
+    // The suspended supervisor reaches nothing of the square.
+    await assertFails(read(db('sup1'), 'squares/s1'));
+    await assertFails(read(db('sup1'), 'exams/e1'));
+  });
+
+  test('officer of the region suspends a supervisor named by two squares', async () => {
+    await env.withSecurityRulesDisabled((context) =>
+      updateDoc(doc(context.firestore(), 'squares/s1b'), { supervisorId: 'sup1' }),
+    );
+    await assertSucceeds(
+      list(db('officer1'), 'squares', where('supervisorId', '==', 'sup1'), where('regionId', '==', 'r1')),
+    );
+    await assertSucceeds(suspendSupervisorBatch('officer1', 'sup1', ['s1', 's1b']).commit());
+  });
+
+  test('the freed square takes a new supervisor', async () => {
+    await suspendSupervisorBatch('admin', 'sup1', ['s1']).commit();
+    const firestore = db('officer1');
+    const batch = writeBatch(firestore);
+    batch.update(doc(firestore, 'users/supNoSquare'), {
+      regionId: 'r1', squareId: 's1', updatedAt: now(),
+    });
+    batch.update(doc(firestore, 'squares/s1'), { supervisorId: 'supNoSquare', updatedAt: now() });
+    await assertSucceeds(batch.commit());
+    await assertSucceeds(read(db('supNoSquare'), 'exams/e1'));
+  });
+
+  test('officer outside the region suspends nobody', async () => {
+    await assertFails(suspendSupervisorBatch('officer2', 'sup1', ['s1']).commit());
+  });
+});
+
+describe('batches: deleting a staff account', () => {
+  test('General Admin deletes a supervisor; the square stays without one', async () => {
+    await assertSucceeds(deleteStaffBatch('admin', 'sup1', ['squares/s1']).commit());
+    await env.withSecurityRulesDisabled(async (context) => {
+      const firestore = context.firestore();
+      assert.equal((await getDoc(doc(firestore, 'users/sup1'))).exists(), false);
+      assert.equal((await getDoc(doc(firestore, 'squares/s1'))).data().supervisorId, null);
+      for (const path of ['mosques/m1', 'users/stu1', 'exams/e1', 'evaluations/eA', 'certificates/eA', 'notifications/n_s1']) {
+        assert.equal((await getDoc(doc(firestore, path))).exists(), true, path);
+      }
+    });
+    // The deleted account reaches nothing, and cannot write its profile again.
+    await assertFails(read(db('sup1'), 'squares/s1'));
+    await assertFails(read(db('sup1'), 'exams/e1'));
+    await assertFails(
+      setDoc(doc(db('sup1'), 'users/sup1'), {
+        ...account('sup1', 'square_supervisor', { regionId: 'r1', squareId: 's1' }),
+        createdAt: now(), updatedAt: now(),
+      }),
+    );
+  });
+
+  test('General Admin deletes an officer; the region stays without one', async () => {
+    await assertSucceeds(deleteStaffBatch('admin', 'officer1', ['regions/r1']).commit());
+    await env.withSecurityRulesDisabled(async (context) => {
+      const firestore = context.firestore();
+      assert.equal((await getDoc(doc(firestore, 'users/officer1'))).exists(), false);
+      assert.equal((await getDoc(doc(firestore, 'regions/r1'))).data().officerId, null);
+      for (const path of ['squares/s1', 'mosques/m1', 'users/stu1', 'exams/e1']) {
+        assert.equal((await getDoc(doc(firestore, path))).exists(), true, path);
+      }
+    });
+    await assertFails(read(db('officer1'), 'regions/r1'));
+  });
+
+  test('an invited account is deleted with its invitation', async () => {
+    await env.withSecurityRulesDisabled((context) =>
+      setDoc(
+        doc(context.firestore(), 'users/invited'),
+        account('invited', 'square_supervisor', { regionId: 'r1', squareId: 's1b' }),
+      ),
+    );
+    // Keeping the invitation would let the account write its profile again.
+    await assertFails(deleteStaffBatch('admin', 'invited', [], { invite: false }).commit());
+    await assertSucceeds(deleteStaffBatch('admin', 'invited').commit());
+    await assertFails(
+      setDoc(doc(db('invited'), 'users/invited'), {
+        ...account('invited', 'square_supervisor', { regionId: 'r1', squareId: 's1b' }),
+        createdAt: now(), updatedAt: now(),
+      }),
+    );
+  });
+
+  test('account stays while its region or square still names it', async () => {
+    await assertFails(deleteStaffBatch('admin', 'sup1').commit());
+    await assertFails(deleteStaffBatch('admin', 'officer1').commit());
+  });
+
+  test('General Admin deletes neither their own account nor a student', async () => {
+    await assertFails(deleteStaffBatch('admin', 'admin').commit());
+    await assertFails(deleteStaffBatch('admin', 'stu1').commit());
+    await assertFails(deleteDoc(doc(db('admin'), 'users/stu1')));
+  });
+
+  test('nobody else deletes an account', async () => {
+    for (const uid of everyoneElse) {
+      await assertFails(deleteStaffBatch(uid, 'sup1b', ['squares/s1b']).commit());
+      await assertFails(deleteDoc(doc(db(uid), 'users/supNoSquare')));
+      await assertFails(deleteDoc(doc(db(uid), 'users/officer2')));
+      await assertFails(deleteDoc(doc(db(uid), 'users/admin')));
+      await assertFails(deleteDoc(doc(db(uid), `users/${uid}`)));
+    }
+    await assertFails(deleteDoc(doc(anonymousDb(), 'users/supNoSquare')));
+  });
+});
+
+describe('deleting regions, squares and mosques', () => {
+  test('General Admin deletes a square and leaves its supervisor without one', async () => {
+    const firestore = db('admin');
+    const batch = writeBatch(firestore);
+    batch.update(doc(firestore, 'users/sup1b'), { squareId: null, updatedAt: now() });
+    batch.delete(doc(firestore, 'squares/s1b'));
+    await assertSucceeds(batch.commit());
+    await env.withSecurityRulesDisabled(async (context) => {
+      const supervisor = await getDoc(doc(context.firestore(), 'users/sup1b'));
+      assert.equal(supervisor.data().squareId, null);
+      assert.equal((await getDoc(doc(context.firestore(), 'regions/r1'))).exists(), true);
+    });
+  });
+
+  test('General Admin deletes a mosque and a region', async () => {
+    await assertSucceeds(deleteDoc(doc(db('admin'), 'mosques/m3')));
+    await env.withSecurityRulesDisabled((context) =>
+      setDoc(doc(context.firestore(), 'regions/rEmpty'), { ...seed['regions/r1'], officerId: null }),
+    );
+    await assertSucceeds(deleteDoc(doc(db('admin'), 'regions/rEmpty')));
+  });
+
+  test('General Admin reads what the application checks before deleting', async () => {
+    const firestore = db('admin');
+    await assertSucceeds(list(firestore, 'mosques', where('squareId', '==', 's1')));
+    await assertSucceeds(list(firestore, 'users', where('squareId', '==', 's1')));
+    await assertSucceeds(list(firestore, 'users', where('mosqueId', '==', 'm1')));
+    await assertSucceeds(list(firestore, 'users', where('regionId', '==', 'r1')));
+    await assertSucceeds(list(firestore, 'exams', where('squareId', '==', 's1')));
+    await assertSucceeds(list(firestore, 'exams', where('mosqueId', '==', 'm1')));
+    await assertSucceeds(list(firestore, 'exams', where('regionId', '==', 'r1')));
+    await assertSucceeds(list(firestore, 'squares', where('supervisorId', '==', 'sup1')));
+    await assertSucceeds(list(firestore, 'regions', where('officerId', '==', 'officer1')));
+  });
+
+  test('nobody else deletes a region, a square or a mosque', async () => {
+    for (const uid of everyoneElse) {
+      await assertFails(deleteDoc(doc(db(uid), 'regions/r1')));
+      await assertFails(deleteDoc(doc(db(uid), 'squares/s1b')));
+      await assertFails(deleteDoc(doc(db(uid), 'mosques/m3')));
+      await assertFails(deleteDoc(doc(db(uid), 'mosques/m1')));
+    }
+    for (const path of ['regions/r1', 'squares/s1b', 'mosques/m1']) {
+      await assertFails(deleteDoc(doc(anonymousDb(), path)));
+    }
+  });
+});
+
+describe('denied: deleting the curriculum and the examination data', () => {
+  const kept = [
+    'courses/c1', 'tajweed_rules/rule1', 'course_rules/c1_rule1',
+    'question_bank/q1', 'question_answers/q1', 'exam_segments/seg1',
+    'exams/e1', 'exams/eA', 'submissions/e1', 'evaluations/eA',
+    'notifications/n_stu1', 'notifications/n_s1', 'certificates/eA',
+    'exam_questions/e1_1', 'exam_answer_keys/e1',
+  ];
+
+  test('no account deletes them, the General Admin included', async () => {
+    for (const uid of ['admin', 'officer1', 'sup1', 'stu1']) {
+      for (const path of kept) {
+        await assertFails(deleteDoc(doc(db(uid), path)));
+      }
+    }
+  });
+
+  test('a deletion batch cannot carry them along', async () => {
+    for (const path of ['exams/e1', 'submissions/e1', 'evaluations/eA', 'certificates/eA', 'notifications/n_s1', 'courses/c1']) {
+      await assertFails(
+        deleteStaffBatch('admin', 'sup1', ['squares/s1'], { also: [path] }).commit(),
+      );
+    }
   });
 });

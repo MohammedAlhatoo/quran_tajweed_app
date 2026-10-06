@@ -133,9 +133,34 @@ class _FakeOrganizationRepository implements OrganizationRepository {
 
   @override
   Future<void> setAccountActive({
+    required AdminScope scope,
     required AppUser user,
     required bool isActive,
-  }) => _record('active:${user.uid}:$isActive');
+  }) => _record('active:${scope.regionId}:${user.uid}:$isActive');
+
+  @override
+  Future<void> deleteStaff({
+    required AdminScope scope,
+    required AppUser user,
+  }) => _record('deleteStaff:${scope.regionId}:${user.uid}');
+
+  @override
+  Future<void> deleteSquare({
+    required AdminScope scope,
+    required Square square,
+  }) => _record('deleteSquare:${scope.regionId}:${square.id}');
+
+  @override
+  Future<void> deleteMosque({
+    required AdminScope scope,
+    required Mosque mosque,
+  }) => _record('deleteMosque:${scope.regionId}:${mosque.id}');
+
+  @override
+  Future<void> deleteRegion({
+    required AdminScope scope,
+    required Region region,
+  }) => _record('deleteRegion:${scope.regionId}:${region.id}');
 
   @override
   Future<void> sendPasswordReset(String email) => _record('reset:$email');
@@ -252,9 +277,56 @@ void main() {
       expect(repository.calls, [
         'create:square_supervisor:new@example.com:region-1:square-2',
         'assign:sup-1:region-1:null',
-        'active:uid-1:false',
+        'active:region-1:uid-1:false',
         'reset:sup@example.com',
       ]);
+    });
+
+    test('deletions pass the administrator scope and reload', () async {
+      cubit = OrganizationCubit(repository, const AdminScope.system());
+      await cubit.load();
+      repository.loadedScope = null;
+
+      await cubit.deleteStaff(_supervisor);
+      await cubit.deleteSquare(_squares[1]);
+      await cubit.deleteMosque(_mosque);
+      await cubit.deleteRegion(_organization.regions.single);
+
+      expect(repository.calls, [
+        'deleteStaff:null:sup-1',
+        'deleteSquare:null:square-2',
+        'deleteMosque:null:mosque-1',
+        'deleteRegion:null:region-1',
+      ]);
+      expect(repository.loadedScope, isNotNull);
+      expect(cubit.state.isError, isFalse);
+      expect(cubit.state.message, 'تم حذف المنطقة.');
+    });
+
+    test(
+      'a refused deletion is reported in Arabic and keeps the data',
+      () async {
+        await cubit.load();
+        repository.failure = const AppFailure(
+          'لا يمكن حذف المربع لأنه يحتوي على مساجد.',
+        );
+
+        await cubit.deleteSquare(_squares.first);
+
+        expect(cubit.state.isError, isTrue);
+        expect(cubit.state.message, 'لا يمكن حذف المربع لأنه يحتوي على مساجد.');
+        expect(cubit.state.organization, same(_organization));
+      },
+    );
+
+    test('a second change is ignored while one is running', () async {
+      await cubit.load();
+
+      final first = cubit.deleteMosque(_mosque);
+      await cubit.deleteMosque(_mosque);
+      await first;
+
+      expect(repository.calls, ['deleteMosque:region-1:mosque-1']);
     });
 
     test('a failed change is reported and keeps the data', () async {

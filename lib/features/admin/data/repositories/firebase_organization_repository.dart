@@ -15,7 +15,9 @@ import '../../domain/repositories/organization_repository.dart';
 /// from the administrator's device. The security rules check the role and
 /// the scope of every write, and accept an administrative users document
 /// only from its own Firebase Authentication account, matching an invitation
-/// written by an administrator. An account can be suspended but not deleted.
+/// written by an administrator. Deleting an account deletes its users
+/// document and its invitation, which ends its access; the application
+/// cannot delete the Firebase Authentication account of another person.
 class FirebaseOrganizationRepository implements OrganizationRepository {
   FirebaseOrganizationRepository({
     required AuthService authService,
@@ -345,15 +347,163 @@ class FirebaseOrganizationRepository implements OrganizationRepository {
 
   @override
   Future<void> setAccountActive({
+    required AdminScope scope,
     required AppUser user,
     required bool isActive,
-  }) {
-    return _write(
-      () => _users.doc(user.uid).update({
+  }) async {
+    try {
+      final account = <String, dynamic>{
         'isActive': isActive,
         'updatedAt': FieldValue.serverTimestamp(),
-      }),
-    );
+      };
+      final batch = _firestore.batch();
+      if (!isActive && user.role == UserRole.squareSupervisor) {
+        // The account's own squareId is what gives access to a square, so it
+        // is cleared too: reactivated, the supervisor has no square until
+        // one is assigned again.
+        account['squareId'] = null;
+        await _clearLinks(
+          batch,
+          collection: FirebaseCollections.squares,
+          field: 'supervisorId',
+          uid: user.uid,
+          regionId: scope.regionId,
+        );
+      }
+      batch.update(_users.doc(user.uid), account);
+      await batch.commit();
+    } on FirebaseException catch (e) {
+      throw AppFailure.fromFirebase(e);
+    }
+  }
+
+  @override
+  Future<void> deleteStaff({
+    required AdminScope scope,
+    required AppUser user,
+  }) async {
+    _requireGeneralAdmin(scope);
+    final isOfficer = user.role == UserRole.regionOfficer;
+    if (!isOfficer && user.role != UserRole.squareSupervisor) {
+      throw const AppFailure(
+        'يمكن حذف حسابات مسؤولي المناطق ومشرفي المربعات فقط.',
+      );
+    }
+    if (user.uid == _auth.currentUid) {
+      throw const AppFailure('لا يمكنك حذف حسابك.');
+    }
+    try {
+      // One batch: the account, its invitation and its links go together.
+      // Without its invitation the account cannot write its profile again.
+      final batch = _firestore.batch();
+      await _clearLinks(
+        batch,
+        collection: isOfficer
+            ? FirebaseCollections.regions
+            : FirebaseCollections.squares,
+        field: isOfficer ? 'officerId' : 'supervisorId',
+        uid: user.uid,
+      );
+      batch
+        ..delete(_collection(FirebaseCollections.staffInvites).doc(user.uid))
+        ..delete(_users.doc(user.uid));
+      await batch.commit();
+    } on FirebaseException catch (e) {
+      throw AppFailure.fromFirebase(e);
+    }
+  }
+
+  @override
+  Future<void> deleteSquare({
+    required AdminScope scope,
+    required Square square,
+  }) async {
+    _requireGeneralAdmin(scope);
+    try {
+      if (await _hasAny(FirebaseCollections.mosques, 'squareId', square.id)) {
+        throw const AppFailure(
+          'لا يمكن حذف المربع لأنه يحتوي على مساجد. '
+          'انقل مساجده أو احذفها أولًا.',
+        );
+      }
+      final accounts = await _users
+          .where('squareId', isEqualTo: square.id)
+          .get();
+      final supervisors = [
+        for (final doc in accounts.docs)
+          if (doc.data()['role'] == UserRole.squareSupervisor.value)
+            doc.reference,
+      ];
+      if (supervisors.length < accounts.docs.length) {
+        throw const AppFailure('لا يمكن حذف المربع لأن فيه طلابًا مسجّلين.');
+      }
+      if (await _hasAny(FirebaseCollections.exams, 'squareId', square.id)) {
+        throw const AppFailure(
+          'لا يمكن حذف المربع لأن عليه امتحانات أو نتائج مسجّلة.',
+        );
+      }
+
+      // The supervisor's account is kept, without a square.
+      final batch = _firestore.batch();
+      for (final supervisor in supervisors) {
+        batch.update(supervisor, {
+          'squareId': null,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      batch.delete(_collection(FirebaseCollections.squares).doc(square.id));
+      await batch.commit();
+    } on FirebaseException catch (e) {
+      throw AppFailure.fromFirebase(e);
+    }
+  }
+
+  @override
+  Future<void> deleteMosque({
+    required AdminScope scope,
+    required Mosque mosque,
+  }) async {
+    _requireGeneralAdmin(scope);
+    try {
+      if (await _hasAny(FirebaseCollections.users, 'mosqueId', mosque.id)) {
+        throw const AppFailure('لا يمكن حذف المسجد لأن فيه طلابًا مسجّلين.');
+      }
+      if (await _hasAny(FirebaseCollections.exams, 'mosqueId', mosque.id)) {
+        throw const AppFailure(
+          'لا يمكن حذف المسجد لأن عليه امتحانات أو نتائج مسجّلة.',
+        );
+      }
+      await _collection(FirebaseCollections.mosques).doc(mosque.id).delete();
+    } on FirebaseException catch (e) {
+      throw AppFailure.fromFirebase(e);
+    }
+  }
+
+  @override
+  Future<void> deleteRegion({
+    required AdminScope scope,
+    required Region region,
+  }) async {
+    _requireGeneralAdmin(scope);
+    try {
+      const blockers = [
+        (FirebaseCollections.squares, 'لأنها تحتوي على مربعات'),
+        (FirebaseCollections.mosques, 'لأنها تحتوي على مساجد'),
+        (
+          FirebaseCollections.users,
+          'لأن حسابات (مسؤولًا أو مشرفين أو طلابًا) ما زالت مرتبطة بها',
+        ),
+        (FirebaseCollections.exams, 'لأن عليها امتحانات أو نتائج مسجّلة'),
+      ];
+      for (final (collection, reason) in blockers) {
+        if (await _hasAny(collection, 'regionId', region.id)) {
+          throw AppFailure('لا يمكن حذف المنطقة $reason.');
+        }
+      }
+      await _collection(FirebaseCollections.regions).doc(region.id).delete();
+    } on FirebaseException catch (e) {
+      throw AppFailure.fromFirebase(e);
+    }
   }
 
   @override
@@ -417,6 +567,44 @@ class FirebaseOrganizationRepository implements OrganizationRepository {
         field: null,
         'updatedAt': FieldValue.serverTimestamp(),
       });
+    }
+  }
+
+  /// Clears [uid] from every region or square that names it in [field]. An
+  /// officer's query must filter on [regionId].
+  Future<void> _clearLinks(
+    WriteBatch batch, {
+    required String collection,
+    required String field,
+    required String uid,
+    String? regionId,
+  }) async {
+    var linked = _collection(collection).where(field, isEqualTo: uid);
+    if (regionId != null) {
+      linked = linked.where('regionId', isEqualTo: regionId);
+    }
+    for (final doc in (await linked.get()).docs) {
+      batch.update(doc.reference, {
+        field: null,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  /// Whether a document of [collection] has [field] equal to [id].
+  Future<bool> _hasAny(String collection, String field, String id) async {
+    final found = await _collection(collection)
+        .where(field, isEqualTo: id)
+        .limit(1)
+        .get();
+    return found.docs.isNotEmpty;
+  }
+
+  /// Deleting is the General Admin's alone; the security rules refuse it to
+  /// everyone else as well.
+  static void _requireGeneralAdmin(AdminScope scope) {
+    if (!scope.isSystem) {
+      throw const AppFailure('الحذف متاح للمدير العام فقط.');
     }
   }
 
