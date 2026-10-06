@@ -27,6 +27,15 @@ Future<bool> _confirmDelete(
 class RegionsView extends StatelessWidget {
   const RegionsView({super.key});
 
+  /// The officer accounts that belong to [region], as the accounts list
+  /// shows them.
+  static String _officerNames(Organization organization, Region region) {
+    final officers = organization.officersOf(region.id);
+    return officers.isEmpty
+        ? 'بدون مسؤول'
+        : officers.map((officer) => officer.name).join('، ');
+  }
+
   Future<void> _edit(
     BuildContext context,
     OrganizationCubit cubit, [
@@ -81,8 +90,9 @@ class RegionsView extends StatelessWidget {
               title: region.name,
               isActive: region.isActive,
               lines: [
-                'المسؤول: '
-                    '${organization.userName(region.officerId) ?? 'بدون مسؤول'}',
+                'المسؤول: ${_officerNames(organization, region)}',
+                if (!organization.hasConsistentOfficer(region))
+                  'تنبيه: ربط المسؤول غير متطابق. راجع حسابات المسؤولين.',
                 'المربعات: '
                     '${organization.squares.where((s) => s.regionId == region.id).length}',
               ],

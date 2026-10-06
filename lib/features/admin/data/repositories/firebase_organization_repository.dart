@@ -224,6 +224,11 @@ class FirebaseOrganizationRepository implements OrganizationRepository {
     required String regionId,
     String? squareId,
   }) async {
+    final isOfficer = role == UserRole.regionOfficer;
+    // Refused before anything is created: a region has one officer at most,
+    // and the one it has is never replaced.
+    if (isOfficer) await _write(() => _requireFreeRegion(regionId));
+
     // The Firebase Authentication account comes first; its UID names every
     // document written below.
     final String uid;
@@ -275,31 +280,35 @@ class FirebaseOrganizationRepository implements OrganizationRepository {
           // deleted.
         }
       }
-      if (!await _accounts.discard()) {
-        // The application cannot delete it later, so say where it can be.
-        throw AppFailure(
-          'تعذّر إنشاء الحساب، وبقي البريد $accountEmail محجوزًا دون حساب '
-          'في التطبيق. احذفه من Firebase Console (Authentication) قبل '
-          'إعادة المحاولة.',
-        );
-      }
+      if (!await _accounts.discard()) throw _emailLeftBehind(accountEmail);
       throw AppFailure.fromFirebase(e);
     }
-    await _accounts.finish();
 
     var linked = true;
-    try {
-      final batch = _firestore.batch();
-      _link(
-        batch,
-        role: role,
-        uid: uid,
-        regionId: regionId,
-        squareId: squareId,
-      );
-      await batch.commit();
-    } on FirebaseException {
-      linked = false;
+    if (isOfficer) {
+      // An officer's account is kept only once its region names it. A region
+      // another officer took in the meantime is left as it is, and the new
+      // account is taken back.
+      AppFailure? refusal;
+      try {
+        if (!await _claimRegion(regionId, uid)) refusal = _regionTaken;
+      } on FirebaseException catch (e) {
+        refusal = AppFailure.fromFirebase(e);
+      }
+      if (refusal != null) {
+        await _withdrawOfficer(uid, accountEmail);
+        throw refusal;
+      }
+      await _accounts.finish();
+    } else {
+      await _accounts.finish();
+      try {
+        final batch = _firestore.batch();
+        _link(batch, role: role, uid: uid, squareId: squareId);
+        await batch.commit();
+      } on FirebaseException {
+        linked = false;
+      }
     }
 
     try {
@@ -324,6 +333,9 @@ class FirebaseOrganizationRepository implements OrganizationRepository {
     required String regionId,
     String? squareId,
   }) async {
+    if (user.role == UserRole.regionOfficer) {
+      return _write(() => _assignOfficer(user, regionId));
+    }
     try {
       final batch = _firestore.batch()
         ..update(_users.doc(user.uid), {
@@ -331,14 +343,8 @@ class FirebaseOrganizationRepository implements OrganizationRepository {
           'squareId': squareId,
           'updatedAt': FieldValue.serverTimestamp(),
         });
-      await _unlink(batch, user: user, regionId: regionId, squareId: squareId);
-      _link(
-        batch,
-        role: user.role,
-        uid: user.uid,
-        regionId: regionId,
-        squareId: squareId,
-      );
+      await _unlink(batch, user: user, squareId: squareId);
+      _link(batch, role: user.role, uid: user.uid, squareId: squareId);
       await batch.commit();
     } on FirebaseException catch (e) {
       throw AppFailure.fromFirebase(e);
@@ -515,56 +521,140 @@ class FirebaseOrganizationRepository implements OrganizationRepository {
     }
   }
 
-  /// Records [uid] on the region an officer manages, or on the square a
-  /// supervisor reviews.
+  static const _regionTaken = AppFailure(
+    'لهذه المنطقة مسؤول بالفعل. اختر منطقة بدون مسؤول، أو انقل مسؤولها '
+    'الحالي أو احذفه أولًا.',
+  );
+
+  /// The application cannot delete the account later, so say where it can
+  /// be.
+  static AppFailure _emailLeftBehind(String email) => AppFailure(
+    'تعذّر إنشاء الحساب، وبقي البريد $email محجوزًا دون حساب '
+    'في التطبيق. احذفه من Firebase Console (Authentication) قبل '
+    'إعادة المحاولة.',
+  );
+
+  /// Throws unless [regionId] is a region no officer holds, other than
+  /// [uid]: neither the region names another officer, nor does another
+  /// officer account belong to it.
+  Future<void> _requireFreeRegion(String regionId, {String? uid}) async {
+    if (regionId.isEmpty) throw const AppFailure('اختر المنطقة.');
+    final region = await _collection(FirebaseCollections.regions)
+        .doc(regionId)
+        .get();
+    if (!region.exists) {
+      throw const AppFailure(
+        'المنطقة المختارة غير موجودة. حدّث القائمة واختر منطقة أخرى.',
+      );
+    }
+    final holder = region.data()?['officerId'];
+    if (holder != null) {
+      if (holder != uid) throw _regionTaken;
+      return;
+    }
+    final officers = await _users
+        .where('role', isEqualTo: UserRole.regionOfficer.value)
+        .where('regionId', isEqualTo: regionId)
+        .get();
+    if (officers.docs.any((doc) => doc.id != uid)) throw _regionTaken;
+  }
+
+  /// Records [uid] as the officer of [regionId], unless the region is gone
+  /// or names another officer by then. Returns whether it was recorded.
+  Future<bool> _claimRegion(String regionId, String uid) {
+    final region = _collection(FirebaseCollections.regions).doc(regionId);
+    return _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(region);
+      final holder = snapshot.data()?['officerId'];
+      if (!snapshot.exists || (holder != null && holder != uid)) return false;
+      transaction.update(region, {
+        'officerId': uid,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return true;
+    });
+  }
+
+  /// Takes back the officer account just created, whose region could not be
+  /// recorded: its profile, its invitation and its Firebase Authentication
+  /// account.
+  Future<void> _withdrawOfficer(String uid, String email) async {
+    try {
+      final batch = _firestore.batch()
+        ..delete(_collection(FirebaseCollections.staffInvites).doc(uid))
+        ..delete(_users.doc(uid));
+      await batch.commit();
+    } on FirebaseException {
+      await _accounts.finish();
+      throw AppFailure(
+        'تعذّر ربط الحساب $email بالمنطقة، وتعذّر التراجع عن إنشائه. '
+        'احذفه من قائمة الحسابات قبل إعادة المحاولة.',
+      );
+    }
+    if (!await _accounts.discard()) throw _emailLeftBehind(email);
+  }
+
+  /// Moves the officer [user] to [regionId]: the account, the region it
+  /// leaves and the region it takes change together or not at all. A region
+  /// that has another officer is refused.
+  Future<void> _assignOfficer(AppUser user, String regionId) async {
+    await _requireFreeRegion(regionId, uid: user.uid);
+    final regions = _collection(FirebaseCollections.regions);
+    final moved = await _firestore.runTransaction((transaction) async {
+      final target = await transaction.get(regions.doc(regionId));
+      final holder = target.data()?['officerId'];
+      if (!target.exists || (holder != null && holder != user.uid)) {
+        return false;
+      }
+      final oldId = user.regionId;
+      final previous = oldId == null || oldId == regionId
+          ? null
+          : await transaction.get(regions.doc(oldId));
+
+      final stamp = {'updatedAt': FieldValue.serverTimestamp()};
+      transaction.update(_users.doc(user.uid), {
+        'regionId': regionId,
+        'squareId': null,
+        ...stamp,
+      });
+      if (previous != null && previous.data()?['officerId'] == user.uid) {
+        transaction.update(previous.reference, {'officerId': null, ...stamp});
+      }
+      transaction.update(target.reference, {'officerId': user.uid, ...stamp});
+      return true;
+    });
+    if (!moved) throw _regionTaken;
+  }
+
+  /// Records [uid] on the square a supervisor reviews. An officer's region
+  /// is recorded by [_claimRegion] and [_assignOfficer].
   void _link(
     WriteBatch batch, {
     required UserRole role,
     required String uid,
-    required String regionId,
     required String? squareId,
   }) {
-    final update = {'updatedAt': FieldValue.serverTimestamp()};
-    if (role == UserRole.regionOfficer) {
-      batch.update(_collection(FirebaseCollections.regions).doc(regionId), {
-        'officerId': uid,
-        ...update,
-      });
-    } else if (role == UserRole.squareSupervisor && squareId != null) {
+    if (role == UserRole.squareSupervisor && squareId != null) {
       batch.update(_collection(FirebaseCollections.squares).doc(squareId), {
         'supervisorId': uid,
-        ...update,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
     }
   }
 
-  /// Clears [user] from the region or square it leaves, when that one still
-  /// names [user].
+  /// Clears the supervisor [user] from the square it leaves, when that one
+  /// still names [user].
   Future<void> _unlink(
     WriteBatch batch, {
     required AppUser user,
-    required String regionId,
     required String? squareId,
   }) async {
-    final (collection, field, oldId, newId) = switch (user.role) {
-      UserRole.regionOfficer => (
-        FirebaseCollections.regions,
-        'officerId',
-        user.regionId,
-        regionId,
-      ),
-      _ => (
-        FirebaseCollections.squares,
-        'supervisorId',
-        user.squareId,
-        squareId,
-      ),
-    };
-    if (oldId == null || oldId == newId) return;
-    final previous = _collection(collection).doc(oldId);
-    if ((await previous.get()).data()?[field] == user.uid) {
+    final oldId = user.squareId;
+    if (oldId == null || oldId == squareId) return;
+    final previous = _collection(FirebaseCollections.squares).doc(oldId);
+    if ((await previous.get()).data()?['supervisorId'] == user.uid) {
       batch.update(previous, {
-        field: null,
+        'supervisorId': null,
         'updatedAt': FieldValue.serverTimestamp(),
       });
     }

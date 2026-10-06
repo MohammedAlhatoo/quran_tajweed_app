@@ -50,6 +50,9 @@ abstract interface class OrganizationRepository {
   /// square supervisor, then its `users` document under the same UID, links
   /// it to its scope, and emails its owner a link to set the password. No
   /// password is stored.
+  ///
+  /// A region has one officer at most: an officer for a region that already
+  /// has one is refused, and neither that officer nor the region changes.
   Future<void> createStaff({
     required String name,
     required String email,
@@ -61,7 +64,7 @@ abstract interface class OrganizationRepository {
 
   /// Links the officer [user] to [regionId], or the supervisor [user] to
   /// [squareId] of [regionId]. A null [squareId] leaves a supervisor without
-  /// a square.
+  /// a square. An officer is never moved to a region that has another.
   Future<void> assignStaff({
     required AppUser user,
     required String regionId,

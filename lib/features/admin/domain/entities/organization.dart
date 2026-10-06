@@ -130,4 +130,36 @@ class Organization {
           square.id == supervisor?.squareId)
         square,
   ];
+
+  /// The officer accounts whose own region is [regionId]. An account's
+  /// `regionId` is what gives access to the region, so it decides here too.
+  List<AppUser> officersOf(String regionId) => [
+    for (final user in users)
+      if (user.role == UserRole.regionOfficer && user.regionId == regionId)
+        user,
+  ];
+
+  /// Whether [region] and the accounts agree on its officer: at most one
+  /// officer account belongs to it, and it is the one the region names.
+  bool hasConsistentOfficer(Region region) {
+    final officers = officersOf(region.id);
+    return officers.length <= 1 &&
+        region.officerId == officers.firstOrNull?.uid;
+  }
+
+  /// Whether the region of the account [officer] names it as its officer.
+  bool isOfficerOfRegion(AppUser officer) => regions.any(
+    (region) =>
+        region.id == officer.regionId && region.officerId == officer.uid,
+  );
+
+  /// The regions an officer can be linked to: those no officer holds, and
+  /// the one that names [officer]. A region has one officer at most.
+  List<Region> regionsOpenTo(AppUser? officer) => [
+    for (final region in regions)
+      if (region.officerId == null
+          ? officersOf(region.id).every((other) => other.uid == officer?.uid)
+          : region.officerId == officer?.uid)
+        region,
+  ];
 }

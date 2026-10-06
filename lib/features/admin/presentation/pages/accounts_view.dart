@@ -57,13 +57,21 @@ class _AccountsViewState extends State<AccountsView> {
     Organization organization,
   ) async {
     final isOfficer = _role == UserRole.regionOfficer;
+    // An officer is offered only the regions without one.
     final scopes = isOfficer
-        ? [for (final region in organization.regions) (region.id, region.name)]
+        ? [
+            for (final region in organization.regionsOpenTo(null))
+              (region.id, region.name),
+          ]
         : _squareOptions(organization, cubit, null);
     if (scopes.isEmpty) {
       showAppSnackBar(
         context,
-        isOfficer ? 'أضف منطقة أولًا.' : 'لا يوجد مربع بدون مشرف. أضف مربعًا.',
+        !isOfficer
+            ? 'لا يوجد مربع بدون مشرف. أضف مربعًا.'
+            : organization.regions.isEmpty
+            ? 'لا توجد مناطق. أضف منطقة أولًا.'
+            : 'لكل منطقة مسؤول بالفعل. أضف منطقة جديدة أولًا.',
         isError: true,
       );
       return;
@@ -110,12 +118,18 @@ class _AccountsViewState extends State<AccountsView> {
     AppUser user,
   ) async {
     if (user.role == UserRole.regionOfficer) {
+      // A region that has another officer is never offered.
+      final regions = organization.regionsOpenTo(user);
+      if (regions.isEmpty) {
+        showAppSnackBar(context, 'لا توجد منطقة بدون مسؤول.', isError: true);
+        return;
+      }
       final values = await showOrgForm(
         context,
         title: 'منطقة ${user.name}',
         fields: [
           OrgField.choice('regionId', 'المنطقة', [
-            for (final region in organization.regions) (region.id, region.name),
+            for (final region in regions) (region.id, region.name),
           ], initial: user.regionId),
         ],
       );
@@ -197,6 +211,8 @@ class _AccountsViewState extends State<AccountsView> {
     return switch (user.role) {
       UserRole.regionOfficer => [
         'المنطقة: ${organization.regionName(user.regionId)}',
+        if (!organization.isOfficerOfRegion(user))
+          'تنبيه: المنطقة لا تسجّل هذا الحساب مسؤولًا لها.',
       ],
       UserRole.squareSupervisor => [
         'المربع: ${organization.squareName(user.squareId)}$region',
