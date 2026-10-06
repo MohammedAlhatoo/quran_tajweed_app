@@ -1,8 +1,8 @@
 /// The approved scoring: recitation out of 80, theory out of 20, and a pass
 /// mark of 70 out of 100.
 ///
-/// The theory score is not calculated here: a trusted backend calculates it
-/// when the student submits, and the app only reads it.
+/// The theory score is not calculated here: the review repository calculates
+/// it from the student's answers.
 abstract final class ExamScoring {
   static const int maxRecitationScore = 80;
   static const int maxTheoryScore = 20;

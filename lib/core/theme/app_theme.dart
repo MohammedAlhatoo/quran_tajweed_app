@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'app_colors.dart';
 import 'app_text_styles.dart';
@@ -29,18 +30,64 @@ abstract final class AppTheme {
       scaffoldBackgroundColor: AppColors.background,
       textTheme: AppTextStyles.textTheme,
       appBarTheme: AppBarTheme(
-        backgroundColor: AppColors.surface,
+        backgroundColor: AppColors.header,
+        foregroundColor: AppColors.onHeader,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
+        iconTheme: const IconThemeData(color: AppColors.onHeader),
+        actionsIconTheme: const IconThemeData(color: AppColors.onHeader),
+        // Light status bar icons over the green bar.
+        systemOverlayStyle: SystemUiOverlayStyle.light,
         titleTextStyle: AppTextStyles.cairo(
-          size: 16,
+          size: 17,
           weight: FontWeight.w700,
-          color: AppColors.title,
+          color: AppColors.onHeader,
           lineHeight: 24,
         ),
-        shape: const Border(bottom: BorderSide(color: AppColors.lineSoft)),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          textStyle: AppTextStyles.buttonSecondary,
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        titleTextStyle: AppTextStyles.cairo(
+          size: 17,
+          weight: FontWeight.w700,
+          color: AppColors.title,
+          lineHeight: 26,
+        ),
+        contentTextStyle: AppTextStyles.cairo(
+          size: 14,
+          weight: FontWeight.w500,
+          color: AppColors.bodyText,
+          lineHeight: 22,
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: shape,
+        textStyle: AppTextStyles.body,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: shape,
+        contentTextStyle: AppTextStyles.cairo(
+          size: 13,
+          weight: FontWeight.w600,
+          color: AppColors.onPrimary,
+          lineHeight: 20,
+        ),
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: AppColors.primary,
       ),
       dividerTheme: const DividerThemeData(
         color: AppColors.border,

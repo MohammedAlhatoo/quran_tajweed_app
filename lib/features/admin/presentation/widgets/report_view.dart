@@ -11,7 +11,10 @@ import '../state/report_cubit.dart';
 /// The report of the scope held by the [ReportCubit] above it: the totals,
 /// the breakdown by unit and by course, and the examinations themselves.
 class ReportView extends StatelessWidget {
-  const ReportView({super.key});
+  const ReportView({super.key, this.header});
+
+  /// Shown above the loaded report, such as the button that exports it.
+  final Widget Function(ExamReport report)? header;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +33,7 @@ class ReportView extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               children: [
+                ?header?.call(report),
                 _Totals(report),
                 if (report.byUnit.isNotEmpty) ...[
                   _SectionTitle(report.unitTitle),

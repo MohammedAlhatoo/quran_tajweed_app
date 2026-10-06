@@ -3,7 +3,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../../core/constants/app_assets.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 
 /// Logo, app name and a subtitle line.
@@ -23,16 +22,8 @@ class AuthBrandHeader extends StatelessWidget {
       children: [
         SvgPicture.asset(AppAssets.logo, width: logoSize, height: logoSize),
         const SizedBox(height: 12),
-        Text.rich(
-          TextSpan(
-            children: [
-              const TextSpan(text: 'QuranExam'),
-              TextSpan(
-                text: 'AI',
-                style: AppTextStyles.heading.copyWith(color: AppColors.primary),
-              ),
-            ],
-          ),
+        Text(
+          AppConstants.appName,
           style: AppTextStyles.heading,
           textDirection: TextDirection.ltr,
         ),

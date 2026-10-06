@@ -44,6 +44,15 @@ abstract final class AppColors {
   // Examination screen.
   static const Color examHeader = Color(0xFF095C37);
   static const Color examHeaderSubtitle = Color(0xFFD7F7E6);
+
+  // App bars and headers of every role, a shade lighter than the green of
+  // the examination header. The fill and border are those of the home
+  // banner's icon tile.
+  static const Color header = Color(0xFF0C7045);
+  static const Color onHeader = onPrimary;
+  static const Color onHeaderMuted = examHeaderSubtitle;
+  static const Color onHeaderFill = Color(0x1AFFFFFF);
+  static const Color onHeaderBorder = Color(0x33FFFFFF);
   static const Color mushafBackground = Color(0xFFF7F4EA);
   static const Color mushafPage = Color(0xFFFFFDF6);
   static const Color mushafBorder = Color(0xFFB68933);

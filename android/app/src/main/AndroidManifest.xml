@@ -2,7 +2,7 @@
     <!-- Recording the student's recitation during an examination. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <application
-        android:label="quran_tajweed_app"
+        android:label="Quran Exam"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -29,8 +29,6 @@ class CourseDetailsPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.pageBackground,
       appBar: AppBar(
-        backgroundColor: AppColors.pageBackground,
-        shape: const Border(),
         leading: const AppBackButton(),
         title: const Text('تفاصيل الدورة'),
       ),

@@ -20,6 +20,7 @@ abstract final class ReportBuilder {
     Map<String, String> unitNames = const {},
     String Function(Exam exam)? unitOf,
     String unitTitle = '',
+    String scopeName = '',
   }) {
     final oldest = DateTime.fromMillisecondsSinceEpoch(0);
     DateTime? dateOf(Exam exam) => exam.submittedAt ?? exam.startedAt;
@@ -27,6 +28,7 @@ abstract final class ReportBuilder {
       ..sort((a, b) => (dateOf(b) ?? oldest).compareTo(dateOf(a) ?? oldest));
 
     return ExamReport(
+      scopeName: scopeName,
       students: students,
       totals: totalsOf(exams, evaluations),
       byCourse: _groups(
@@ -53,6 +55,8 @@ abstract final class ReportBuilder {
             studentName: studentNames[exam.studentId] ?? _unknownStudent,
             courseName: courseNames[exam.courseId] ?? _unknownCourse,
             status: exam.status,
+            recitationScore: evaluations[exam.id]?.recitationScore,
+            theoryScore: evaluations[exam.id]?.theoryScore,
             finalScore: evaluations[exam.id]?.finalScore,
             passed: evaluations[exam.id]?.passed,
             date: dateOf(exam),

@@ -48,6 +48,9 @@ dependencies:
   just_audio: ^0.10.6
   shared_preferences: ^2.5.5
   cloud_functions: ^6.5.0
+  http: ^1.6.0
+  pdf: ^3.13.1
+  printing: ^5.15.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -60,7 +63,6 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   googleapis_auth: ^2.3.4
   args: ^2.7.0
-  http: ^1.6.0
   fake_cloud_firestore: ^4.3.0
 
 # For information on the generic Dart part of this file, see the
@@ -78,6 +80,9 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/quran/data/hafsData_v18.json
+    # Embedded in the PDF reports, which must render Arabic offline.
+    - assets/fonts/Cairo-Regular.ttf
+    - assets/fonts/Cairo-Bold.ttf
 
   fonts:
     - family: UthmanicHafs

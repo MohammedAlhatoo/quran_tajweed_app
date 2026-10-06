@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
@@ -70,51 +71,56 @@ class _Header extends StatelessWidget {
     final name = authState is AuthAuthenticated ? authState.user.name : '';
     final firstName = name.trim().split(' ').first;
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.lineSoft)),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-          child: Row(
-            children: [
-              const UserAvatar(size: 44, iconSize: 24),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'مرحبًا $firstName',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.cairo(
-                        size: 16,
-                        weight: FontWeight.w700,
-                        color: AppColors.ink,
-                        lineHeight: 20,
-                      ),
-                    ),
-                    Text(
-                      'استمر في رحلتك نحو إتقان القرآن',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.cairo(
-                        size: 12,
-                        weight: FontWeight.w500,
-                        color: AppColors.muted,
-                        lineHeight: 16,
-                      ),
-                    ),
-                  ],
+    // Light status bar icons over the green header, as under an app bar.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: ColoredBox(
+        color: AppColors.header,
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+            child: Row(
+              children: [
+                const UserAvatar(
+                  size: 44,
+                  iconSize: 24,
+                  borderColor: AppColors.onHeaderBorder,
                 ),
-              ),
-              const SizedBox(width: 12),
-              const _NotificationsButton(),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'مرحبًا $firstName',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.cairo(
+                          size: 16,
+                          weight: FontWeight.w700,
+                          color: AppColors.onHeader,
+                          lineHeight: 22,
+                        ),
+                      ),
+                      Text(
+                        'استمر في رحلتك نحو إتقان القرآن',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.cairo(
+                          size: 12,
+                          weight: FontWeight.w500,
+                          color: AppColors.onHeaderMuted,
+                          lineHeight: 18,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const _NotificationsButton(),
+              ],
+            ),
           ),
         ),
       ),
@@ -138,18 +144,24 @@ class _NotificationsButton extends StatelessWidget {
         isLabelVisible: unread > 0,
         backgroundColor: AppColors.danger,
         child: Material(
-          color: const Color(0xFFF9FAFB),
-          shape: const CircleBorder(side: BorderSide(color: AppColors.line)),
+          color: AppColors.onHeaderFill,
+          shape: const CircleBorder(
+            side: BorderSide(color: AppColors.onHeaderBorder),
+          ),
           child: InkWell(
             customBorder: const CircleBorder(),
             onTap: () => context.push(RouteNames.studentNotifications),
             child: SizedBox.square(
-              dimension: 36,
+              dimension: 40,
               child: Center(
                 child: SvgPicture.asset(
                   AppAssets.bellIcon,
                   width: 20,
                   height: 20,
+                  colorFilter: const ColorFilter.mode(
+                    AppColors.onHeader,
+                    BlendMode.srcIn,
+                  ),
                 ),
               ),
             ),

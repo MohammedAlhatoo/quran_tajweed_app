@@ -14,6 +14,7 @@ Exam _exam(
   String course = 'course-1',
   String square = 'square-1',
   String student = 'uid-1',
+  String region = 'region-1',
   DateTime? submittedAt,
 }) {
   return Exam(
@@ -24,7 +25,7 @@ Exam _exam(
     status: status,
     mosqueId: 'mosque-1',
     squareId: square,
-    regionId: 'region-1',
+    regionId: region,
     submittedAt: submittedAt,
   );
 }
@@ -49,10 +50,11 @@ final _exams = [
     course: 'course-2',
     square: 'square-2',
     student: 'uid-2',
+    region: 'region-2',
     submittedAt: DateTime(2026, 9, 2),
   ),
   // Approved, but its evaluation could not be read.
-  _exam('e5', ExamStatus.approved, square: 'square-2'),
+  _exam('e5', ExamStatus.approved, square: 'square-2', region: 'region-2'),
 ];
 
 final _evaluations = {'e3': _evaluation('e3', 90), 'e4': _evaluation('e4', 60)};
@@ -64,7 +66,7 @@ ExamReport _build({String Function(Exam exam)? unitOf}) {
     students: 2,
     studentNames: const {'uid-1': 'أحمد'},
     courseNames: const {'course-1': 'تمهيدية'},
-    unitNames: const {'square-1': 'المربع الأول'},
+    unitNames: const {'square-1': 'المربع الأول', 'region-1': 'المنطقة الأولى'},
     unitOf: unitOf,
     unitTitle: 'حسب المربع',
   );
@@ -123,6 +125,39 @@ void main() {
       final byUnit = _build(unitOf: (exam) => exam.squareId).byUnit;
       expect(byUnit.map((group) => group.totals.exams), [3, 2]);
       expect(byUnit.first.label, 'المربع الأول');
+      // square-2 holds the failed e4 and e5, whose evaluation is unknown.
+      expect(byUnit.first.totals.passed, 1);
+      expect(byUnit.first.totals.averageScore, 90);
+      expect(byUnit.last.label, 'غير معروف');
+      expect(byUnit.last.totals.approved, 2);
+      expect(byUnit.last.totals.failed, 1);
+      expect(byUnit.last.totals.passRate, 0);
+      expect(byUnit.last.totals.averageScore, 60);
+    });
+
+    test('groups the report of the system by region', () {
+      final byUnit = _build(unitOf: (exam) => exam.regionId).byUnit;
+
+      expect(byUnit.map((group) => group.label), [
+        'المنطقة الأولى',
+        'غير معروف',
+      ]);
+      final first = byUnit.first.totals;
+      expect(first.exams, 3);
+      expect(first.inProgress, 1);
+      expect(first.awaitingReview, 1);
+      expect(first.approved, 1);
+      expect(first.passed, 1);
+      expect(first.failed, 0);
+      expect(first.passRate, 100);
+      expect(first.averageScore, 90);
+      // region-2 holds the failed e4 and e5, whose evaluation is unknown.
+      final last = byUnit.last.totals;
+      expect(last.exams, 2);
+      expect(last.approved, 2);
+      expect(last.failed, 1);
+      expect(last.passRate, 0);
+      expect(last.averageScore, 60);
     });
 
     test('lists the examinations newest first with their results', () {
@@ -132,6 +167,10 @@ void main() {
       final failed = exams.firstWhere((exam) => exam.examId == 'e4');
       expect(failed.passed, isFalse);
       expect(failed.finalScore, 60);
+      expect(failed.recitationScore, 50);
+      expect(failed.theoryScore, 10);
+      expect(exams.first.recitationScore, isNull);
+      expect(exams.first.theoryScore, isNull);
       expect(failed.studentName, 'طالب غير معروف');
       expect(exams.first.finalScore, isNull);
       expect(exams.first.studentName, 'أحمد');
@@ -148,6 +187,28 @@ void main() {
       expect(repository.requested!.squareId, 'sq');
       expect(repository.requested!.regionId, isNull);
       expect((cubit.state as ReportLoaded).report.students, 2);
+    });
+
+    test('load reports the region of a region officer', () async {
+      final repository = _FakeReportsRepository();
+      final cubit = ReportCubit(repository, const ReportScope.region('rg'));
+
+      await cubit.load();
+
+      expect(repository.requested!.regionId, 'rg');
+      expect(repository.requested!.squareId, isNull);
+      expect(cubit.state, isA<ReportLoaded>());
+    });
+
+    test('load reports the whole system for the General Admin', () async {
+      final repository = _FakeReportsRepository();
+      final cubit = ReportCubit(repository, const ReportScope.system());
+
+      await cubit.load();
+
+      expect(repository.requested!.regionId, isNull);
+      expect(repository.requested!.squareId, isNull);
+      expect(cubit.state, isA<ReportLoaded>());
     });
 
     test('load is refused for an account without a scope', () async {

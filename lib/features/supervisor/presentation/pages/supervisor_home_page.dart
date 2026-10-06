@@ -9,6 +9,7 @@ import '../../../../core/widgets/state_views.dart';
 import '../../../../router/route_names.dart';
 import '../../../admin/presentation/state/report_cubit.dart';
 import '../../../admin/presentation/widgets/report_view.dart';
+import '../../../admin/presentation/widgets/square_report_pdf_button.dart';
 import '../../../auth/presentation/state/auth_cubit.dart';
 import '../../../auth/presentation/state/auth_state.dart';
 import '../../../courses/domain/entities/course.dart';
@@ -54,7 +55,9 @@ class SupervisorHomePage extends StatelessWidget {
           icon: Icons.bar_chart_rounded,
           title: 'تقرير المربع',
           onSelected: context.read<ReportCubit>().load,
-          body: const ReportView(),
+          body: ReportView(
+            header: (report) => SquareReportPdfButton(report: report),
+          ),
         ),
         RoleTab(
           label: 'الإشعارات',

@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/widgets/role_shell.dart';
 import '../../../auth/domain/entities/user_role.dart';
 import '../state/report_cubit.dart';
+import '../widgets/general_admin_report_pdf_button.dart';
 import '../widgets/org_widgets.dart';
 import '../widgets/report_view.dart';
 import 'accounts_view.dart';
@@ -53,7 +54,9 @@ class AdminHomePage extends StatelessWidget {
             icon: Icons.bar_chart_rounded,
             title: 'تقرير النظام',
             onSelected: context.read<ReportCubit>().load,
-            body: const ReportView(),
+            body: ReportView(
+              header: (report) => GeneralAdminReportPdfButton(report: report),
+            ),
           ),
         ],
       ),

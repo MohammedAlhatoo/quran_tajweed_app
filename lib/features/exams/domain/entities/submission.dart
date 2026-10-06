@@ -14,7 +14,7 @@ class Submission {
   final String examId;
   final String studentId;
 
-  /// The Storage path of the recitation recording, stored as `recordingUrl`.
+  /// The link of the recitation recording, stored as `recordingUrl`.
   final String recordingPath;
 
   /// The student's answers, in the order of the questions.

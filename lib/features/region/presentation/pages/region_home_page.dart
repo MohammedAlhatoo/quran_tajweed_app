@@ -6,6 +6,7 @@ import '../../../admin/presentation/pages/accounts_view.dart';
 import '../../../admin/presentation/pages/units_views.dart';
 import '../../../admin/presentation/state/report_cubit.dart';
 import '../../../admin/presentation/widgets/org_widgets.dart';
+import '../../../admin/presentation/widgets/region_report_pdf_button.dart';
 import '../../../admin/presentation/widgets/report_view.dart';
 import '../../../auth/domain/entities/user_role.dart';
 
@@ -50,7 +51,9 @@ class RegionHomePage extends StatelessWidget {
             icon: Icons.bar_chart_rounded,
             title: 'تقرير المنطقة',
             onSelected: context.read<ReportCubit>().load,
-            body: const ReportView(),
+            body: ReportView(
+              header: (report) => RegionReportPdfButton(report: report),
+            ),
           ),
         ],
       ),

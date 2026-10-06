@@ -83,13 +83,7 @@ class _RoleShellState extends State<RoleShell> {
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: Text(tabs[_index].title),
-        actions: [
-          IconButton(
-            tooltip: 'تسجيل الخروج',
-            onPressed: _signOut,
-            icon: const Icon(Icons.logout_rounded, color: AppColors.muted),
-          ),
-        ],
+        actions: [_SignOutButton(onPressed: _signOut)],
       ),
       body: IndexedStack(
         index: _index,
@@ -115,6 +109,65 @@ class _RoleShellState extends State<RoleShell> {
                     ),
                   ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The sign-out action of the app bar: the icon with its name beside it, on
+/// a light tile that stands out from the bar.
+class _SignOutButton extends StatelessWidget {
+  const _SignOutButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(10);
+
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(end: 12),
+      child: Center(
+        child: Tooltip(
+          message: 'تسجيل الخروج',
+          child: Material(
+            color: AppColors.onHeaderFill,
+            shape: RoundedRectangleBorder(
+              borderRadius: radius,
+              side: const BorderSide(color: AppColors.onHeaderBorder),
+            ),
+            child: InkWell(
+              borderRadius: radius,
+              onTap: onPressed,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.logout_rounded,
+                      size: 18,
+                      color: AppColors.onHeader,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'خروج',
+                      style: AppTextStyles.cairo(
+                        size: 12,
+                        weight: FontWeight.w700,
+                        color: AppColors.onHeader,
+                        lineHeight: 18,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

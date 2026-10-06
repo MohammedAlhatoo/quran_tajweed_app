@@ -189,15 +189,25 @@ class _SignOutButton extends StatelessWidget {
         onTap: isLoading ? null : onPressed,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 11),
-          child: Text(
-            'تسجيل الخروج',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.cairo(
-              size: 14,
-              weight: FontWeight.w500,
-              color: AppColors.danger,
-              lineHeight: 20,
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.logout_rounded,
+                size: 18,
+                color: AppColors.danger,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'تسجيل الخروج',
+                style: AppTextStyles.cairo(
+                  size: 14,
+                  weight: FontWeight.w700,
+                  color: AppColors.danger,
+                  lineHeight: 20,
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -8,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/constants/app_constants.dart';
 import 'core/services/account_creation_service.dart';
 import 'core/services/auth_service.dart';
-import 'core/services/storage_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/admin/data/repositories/firebase_organization_repository.dart';
 import 'features/admin/data/repositories/firestore_reports_repository.dart';
@@ -21,12 +20,12 @@ import 'features/certificates/data/repositories/firestore_certificates_repositor
 import 'features/certificates/domain/repositories/certificates_repository.dart';
 import 'features/courses/data/repositories/firestore_courses_repository.dart';
 import 'features/courses/domain/repositories/courses_repository.dart';
-import 'features/exams/data/repositories/firebase_recording_repository.dart';
+import 'features/exams/data/repositories/cloudinary_recording_repository.dart';
 import 'features/exams/data/repositories/firestore_evaluations_repository.dart';
 import 'features/exams/data/repositories/firestore_exams_repository.dart';
 import 'features/exams/domain/repositories/evaluations_repository.dart';
 import 'features/exams/domain/repositories/exams_repository.dart';
-import 'features/exams/data/repositories/functions_submission_repository.dart';
+import 'features/exams/data/repositories/firestore_submission_repository.dart';
 import 'features/exams/domain/repositories/recording_repository.dart';
 import 'features/exams/domain/repositories/submission_repository.dart';
 import 'features/notifications/data/repositories/firestore_notifications_repository.dart';
@@ -95,11 +94,10 @@ class _QuranTajweedAppState extends State<QuranTajweedApp> {
           create: (_) => FirestoreExamsRepository(),
         ),
         RepositoryProvider<RecordingRepository>(
-          create: (_) =>
-              FirebaseRecordingRepository(storageService: StorageService()),
+          create: (_) => CloudinaryRecordingRepository(),
         ),
         RepositoryProvider<SubmissionRepository>(
-          create: (_) => FunctionsSubmissionRepository(),
+          create: (_) => FirestoreSubmissionRepository(),
         ),
         RepositoryProvider<EvaluationsRepository>(
           create: (_) => FirestoreEvaluationsRepository(),
@@ -132,8 +130,7 @@ class _QuranTajweedAppState extends State<QuranTajweedApp> {
           create: (_) => FirestoreStudentProfileRepository(),
         ),
         RepositoryProvider<ReviewRepository>(
-          create: (_) =>
-              FirebaseReviewRepository(storageService: StorageService()),
+          create: (_) => FirebaseReviewRepository(),
         ),
       ],
       child: BlocProvider<AuthCubit>.value(

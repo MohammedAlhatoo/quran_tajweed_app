@@ -1,10 +1,18 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/helpers.dart';
 import '../../../../core/widgets/app_back_button.dart';
+import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/state_views.dart';
 import '../../../auth/presentation/state/auth_cubit.dart';
 import '../../../auth/presentation/state/auth_state.dart';
@@ -38,7 +46,7 @@ class CertificatePage extends StatelessWidget {
           ExamResultLoaded(:final certificate?, :final course) => SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
-              child: _CertificateSheet(
+              child: _DownloadableCertificate(
                 certificate: certificate,
                 studentName: studentName,
                 courseName: course?.name ?? 'التجويد',
@@ -50,6 +58,88 @@ class CertificatePage extends StatelessWidget {
           ),
         },
       ),
+    );
+  }
+}
+
+/// The certificate sheet with the button that saves it as a PDF file.
+class _DownloadableCertificate extends StatefulWidget {
+  const _DownloadableCertificate({
+    required this.certificate,
+    required this.studentName,
+    required this.courseName,
+  });
+
+  final Certificate certificate;
+  final String studentName;
+  final String courseName;
+
+  @override
+  State<_DownloadableCertificate> createState() =>
+      _DownloadableCertificateState();
+}
+
+class _DownloadableCertificateState extends State<_DownloadableCertificate> {
+  final _sheetKey = GlobalKey();
+  bool _isExporting = false;
+
+  /// Captures the sheet as an image, puts it on one PDF page and opens the
+  /// share sheet of the system.
+  Future<void> _downloadPdf() async {
+    if (_isExporting) return;
+    setState(() => _isExporting = true);
+    try {
+      final boundary =
+          _sheetKey.currentContext!.findRenderObject()!
+              as RenderRepaintBoundary;
+      final image = await boundary.toImage(pixelRatio: 3);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+
+      final sheet = pw.MemoryImage(data!.buffer.asUint8List());
+      final document = pw.Document()
+        ..addPage(
+          pw.Page(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.all(32),
+            build: (_) =>
+                pw.Center(child: pw.Image(sheet, fit: pw.BoxFit.contain)),
+          ),
+        );
+
+      await Printing.sharePdf(
+        bytes: await document.save(),
+        filename: 'certificate_${widget.certificate.certificateNumber}.pdf',
+      );
+    } catch (_) {
+      if (mounted) {
+        showAppSnackBar(context, 'تعذّر إنشاء ملف PDF.', isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        RepaintBoundary(
+          key: _sheetKey,
+          child: _CertificateSheet(
+            certificate: widget.certificate,
+            studentName: widget.studentName,
+            courseName: widget.courseName,
+          ),
+        ),
+        const SizedBox(height: 20),
+        AppButton(
+          label: 'تحميل PDF',
+          isLoading: _isExporting,
+          onPressed: _downloadPdf,
+        ),
+      ],
     );
   }
 }

@@ -3,9 +3,7 @@ import 'recitation_error.dart';
 /// The approved evaluation of one examination, from the `evaluations`
 /// collection. Its ID is the examination's ID.
 ///
-/// The document is created when the student submits, with the theory score
-/// only, and completed when the supervisor approves the result. It is read
-/// as an [Evaluation] only once it is approved.
+/// The document is created when the supervisor approves the result.
 class Evaluation {
   const Evaluation({
     required this.examId,

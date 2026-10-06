@@ -18,7 +18,6 @@ import {
 import {
   collection,
   deleteDoc,
-  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -93,11 +92,14 @@ function answers() {
   }));
 }
 
+const recordingUrl = (examId) =>
+  `https://res.cloudinary.com/demo/video/upload/v1/exam_recordings/${examId}/1.m4a`;
+
 function submission(examId, studentId) {
   return {
     examId,
     studentId,
-    recordingUrl: `exam_recordings/${examId}/recitation.m4a`,
+    recordingUrl: recordingUrl(examId),
     answers: answers(),
     submittedAt: seededAt,
     createdAt: seededAt,
@@ -136,8 +138,7 @@ function evaluation(examId, supervisorId) {
   };
 }
 
-// The evaluation the submitExam Cloud Function writes: the theory score is
-// final, and what the supervisor enters is still empty.
+// An evaluation that is not approved, which no account may write.
 function pendingEvaluation(examId, theoryScore = 18) {
   return {
     examId,
@@ -234,7 +235,7 @@ const seed = {
   'question_bank/q1': { question: 'سؤال', options: ['أ', 'ب'] },
   'question_answers/q1': { correctAnswer: 'أ' },
 
-  // e1: stu1, awaiting review, graded on submission.  eOpen: stu1, in
+  // e1: stu1, submitted and awaiting review.  eOpen: stu1, in
   // progress.  eA: stu1, approved.  e2 / eB: stu2 in the other square and
   // region.
   'exams/e1': exam('stu1', inS1, 'pending_review'),
@@ -250,8 +251,6 @@ const seed = {
   'exam_answer_keys/e1': answerKey('e1'),
   'exam_answer_keys/eOpen': answerKey('eOpen'),
   'exam_answer_keys/e2': answerKey('e2'),
-  'evaluations/e1': pendingEvaluation('e1'),
-  'evaluations/e2': pendingEvaluation('e2'),
   'evaluations/eA': evaluation('eA', 'sup1'),
   'evaluations/eB': evaluation('eB', 'sup2'),
   'certificates/eA': certificate('eA', 'stu1'),
@@ -354,15 +353,11 @@ describe('denied: student', () => {
     await assertFails(deleteDoc(doc(db('stu1'), 'exam_answer_keys/eOpen')));
   });
 
-  test('reads the theory score before the result is approved', async () => {
-    await assertFails(read(db('stu1'), 'evaluations/e1'));
-  });
-
   test('writes the theory score', async () => {
-    const pending = doc(db('stu1'), 'evaluations/e1');
-    await assertFails(updateDoc(pending, { theoryScore: 20 }));
-    await assertFails(setDoc(pending, pendingEvaluation('e1', 20)));
-    await assertFails(deleteDoc(pending));
+    const own = doc(db('stu1'), 'evaluations/e1');
+    await assertFails(updateDoc(own, { theoryScore: 20 }));
+    await assertFails(setDoc(own, pendingEvaluation('e1', 20)));
+    await assertFails(updateDoc(doc(db('stu1'), 'evaluations/eA'), { theoryScore: 20 }));
     await assertFails(
       setDoc(doc(db('stu1'), 'evaluations/eOpen'), {
         ...pendingEvaluation('eOpen', 20), gradedAt: now(),
@@ -650,9 +645,10 @@ describe('denied: supervisor outside the square', () => {
     );
   });
 
-  test('reads or lists question_answers', async () => {
-    await assertFails(read(db('sup1'), 'question_answers/q1'));
+  test('lists or writes question_answers', async () => {
     await assertFails(list(db('sup1'), 'question_answers'));
+    await assertFails(setDoc(doc(db('sup1'), 'question_answers/q1'), { correctAnswer: 'ب' }));
+    await assertFails(deleteDoc(doc(db('sup1'), 'question_answers/q1')));
   });
 
   test('reads the answer key of another square, or lists answer keys', async () => {
@@ -1064,8 +1060,11 @@ describe('allowed: active supervisor in the square', () => {
     await assertSucceeds(read(db('sup1'), 'exam_questions/e1_1'));
     const key = await assertSucceeds(read(db('sup1'), 'exam_answer_keys/e1'));
     assert.equal(key.data().answers.length, 10);
+    const answer = await assertSucceeds(read(db('sup1'), 'question_answers/q1'));
+    assert.equal(answer.data().correctAnswer, 'أ');
+    // No evaluation exists before the approval.
     const pending = await assertSucceeds(read(db('sup1'), 'evaluations/e1'));
-    assert.equal(pending.data().theoryScore, 18);
+    assert.equal(pending.exists(), false);
     await assertSucceeds(read(db('sup1'), 'evaluations/eA'));
     await assertSucceeds(read(db('sup1'), 'certificates/eA'));
   });
@@ -1202,13 +1201,16 @@ function submitBatch(uid, examId, squareId = 's1') {
   return batch;
 }
 
-// The theory score every seeded pending evaluation holds.
+// The theory score the supervisor's device calculated.
 const storedTheory = 18;
 
 // What the application writes to approve a result. [scores.recitation] is
 // what the supervisor enters; [scores.final] overrides the final score, which
-// is otherwise the recitation score plus the stored theory score. [report]
-// overrides or adds fields of the evaluation.
+// is otherwise the recitation score plus the theory score of 18. [report]
+// overrides or adds fields of the evaluation; a field set to [missing] is
+// left out.
+const missing = Symbol('missing');
+
 function approveBatch(uid, examId, studentId, scores, withCertificate, report = {}) {
   const firestore = db(uid);
   const finalScore = scores.final ?? scores.recitation + storedTheory;
@@ -1216,9 +1218,11 @@ function approveBatch(uid, examId, studentId, scores, withCertificate, report = 
   batch.update(doc(firestore, `exams/${examId}`), {
     status: 'approved', reviewedAt: now(), approvedAt: now(), updatedAt: now(),
   });
-  batch.update(doc(firestore, `evaluations/${examId}`), {
+  const evaluation = {
+    examId,
     supervisorId: uid,
     recitationScore: scores.recitation,
+    theoryScore: storedTheory,
     finalScore,
     result: finalScore >= 70 ? 'passed' : 'failed',
     feedback: null,
@@ -1227,7 +1231,11 @@ function approveBatch(uid, examId, studentId, scores, withCertificate, report = 
     reviewedAt: now(),
     approvedAt: now(),
     ...report,
-  });
+  };
+  for (const [field, value] of Object.entries(evaluation)) {
+    if (value === missing) delete evaluation[field];
+  }
+  batch.set(doc(firestore, `evaluations/${examId}`), evaluation);
   batch.set(doc(firestore, `notifications/${examId}_result`), {
     ...notification({ userId: studentId }), relatedId: examId, createdAt: now(),
   });
@@ -1256,27 +1264,74 @@ describe('batches: examination', () => {
     );
   });
 
-  // The submitExam Cloud Function submits an examination; the application
-  // cannot, whatever it writes.
-  test('student cannot submit by writing the documents', async () => {
-    await assertFails(submitBatch('stu1', 'eOpen').commit());
+  test('student submits an examination with its submission and notification', async () => {
+    await assertSucceeds(submitBatch('stu1', 'eOpen').commit());
+
+    assert.equal((await read(db('stu1'), 'exams/eOpen')).data().status, 'pending_review');
+    await assertSucceeds(read(db('sup1'), 'submissions/eOpen'));
+    await assertSucceeds(read(db('sup1'), 'notifications/eOpen_submitted'));
   });
 
-  test('student cannot write a submission, with or without the examination', async () => {
+  test('a submitted examination is not submitted again, and its recording is not replaced', async () => {
+    await assertSucceeds(submitBatch('stu1', 'eOpen').commit());
+
+    await assertFails(submitBatch('stu1', 'eOpen').commit());
+    const own = doc(db('stu1'), 'submissions/eOpen');
+    await assertFails(updateDoc(own, { recordingUrl: recordingUrl('eOpen') + 'x' }));
+    await assertFails(
+      setDoc(own, { ...submission('eOpen', 'stu1'), submittedAt: now(), createdAt: now() }),
+    );
+    await assertFails(deleteDoc(own));
+    await assertFails(
+      updateDoc(doc(db('stu1'), 'exams/eOpen'), { status: 'in_progress', updatedAt: now() }),
+    );
+  });
+
+  // [change] overrides fields of the submission.
+  const submitWith = (change, uid = 'stu1', examId = 'eOpen') => {
+    const firestore = db(uid);
+    const batch = writeBatch(firestore);
+    batch.set(doc(firestore, `submissions/${examId}`), {
+      ...submission(examId, uid), submittedAt: now(), createdAt: now(), ...change,
+    });
+    batch.update(doc(firestore, `exams/${examId}`), {
+      status: 'pending_review', submittedAt: now(), updatedAt: now(),
+    });
+    return batch.commit();
+  };
+
+  test('student cannot write a submission without submitting the examination', async () => {
     await assertFails(
       setDoc(doc(db('stu1'), 'submissions/eOpen'), {
         ...submission('eOpen', 'stu1'), submittedAt: now(), createdAt: now(),
       }),
     );
-    const firestore = db('stu1');
-    const batch = writeBatch(firestore);
-    batch.set(doc(firestore, 'submissions/eOpen'), {
-      ...submission('eOpen', 'stu1'), submittedAt: now(), createdAt: now(),
-    });
-    batch.update(doc(firestore, 'exams/eOpen'), {
-      status: 'pending_review', submittedAt: now(), updatedAt: now(),
-    });
-    await assertFails(batch.commit());
+  });
+
+  test('a submission needs a Cloudinary recording of the examination and ten answers', async () => {
+    await assertFails(submitWith({ recordingUrl: 'exam_recordings/eOpen/recitation.m4a' }));
+    await assertFails(submitWith({ recordingUrl: recordingUrl('e1') }));
+    await assertFails(
+      submitWith({ recordingUrl: 'https://example.com/video/upload/exam_recordings/eOpen/1.m4a' }),
+    );
+    await assertFails(submitWith({ recordingUrl: null }));
+    await assertFails(submitWith({ answers: answers().slice(0, 9) }));
+    await assertFails(submitWith({ answers: null }));
+    await assertFails(submitWith({ studentId: 'stu1x' }));
+    await assertFails(submitWith({ examId: 'e1' }));
+    await assertFails(submitWith({ theoryScore: 20 }));
+    await assertFails(submitWith({ submittedAt: seededAt }));
+    await assertSucceeds(submitWith({}));
+  });
+
+  test('student cannot submit the examination of another student', async () => {
+    await assertFails(submitWith({}, 'stu1x'));
+    await assertFails(submitBatch('stu1x', 'eOpen').commit());
+    await assertFails(submitBatch('stu2', 'eOpen', 's2').commit());
+  });
+
+  test('the notification of a submission goes to the square of the examination only', async () => {
+    await assertFails(submitBatch('stu1', 'eOpen', 's2').commit());
   });
 
   test('student cannot submit with a theory score of their own', async () => {
@@ -1300,14 +1355,9 @@ describe('batches: examination', () => {
 });
 
 describe('batches: approval', () => {
-  // With the stored theory score of 18: 88, passed; and 58, failed.
+  // With the theory score of 18: 88, passed; and 58, failed.
   const passed = { recitation: 70 };
   const failed = { recitation: 40 };
-
-  const withoutEvaluation = (examId) =>
-    env.withSecurityRulesDisabled((context) =>
-      deleteDoc(doc(context.firestore(), `evaluations/${examId}`)),
-    );
 
   test('supervisor approves a passed result with its certificate', async () => {
     await assertSucceeds(approveBatch('sup1', 'e1', 'stu1', passed, true).commit());
@@ -1366,32 +1416,42 @@ describe('batches: approval', () => {
     );
   });
 
-  test('supervisor cannot change the theory score', async () => {
-    // Raised, with a final score that agrees with it.
+  test('a theory score out of range, or an unknown field, is refused', async () => {
     await assertFails(
-      approveBatch('sup1', 'e1', 'stu1', { recitation: 70, final: 90 }, true, { theoryScore: 20 }).commit(),
+      approveBatch('sup1', 'e1', 'stu1', { recitation: 70, final: 91 }, true, { theoryScore: 21 }).commit(),
     );
-    // Lowered, which would fail a passed student.
     await assertFails(
-      approveBatch('sup1', 'e1', 'stu1', { recitation: 60, final: 60 }, false, { theoryScore: 0 }).commit(),
+      approveBatch('sup1', 'e1', 'stu1', { recitation: 70, final: 69 }, false, { theoryScore: -1 }).commit(),
     );
-    // Changed while the final score still uses the stored one.
+    await assertFails(
+      approveBatch('sup1', 'e1', 'stu1', { recitation: 70, final: 88.5 }, true, { theoryScore: 18.5 }).commit(),
+    );
+    await assertFails(
+      approveBatch('sup1', 'e1', 'stu1', { recitation: 70, final: 70 }, true, { theoryScore: null }).commit(),
+    );
+    // A final score that still uses another theory score.
     await assertFails(
       approveBatch('sup1', 'e1', 'stu1', passed, true, { theoryScore: 20 }).commit(),
     );
     await assertFails(
       approveBatch('sup1', 'e1', 'stu1', passed, true, { correctCount: 10 }).commit(),
     );
-    // On its own, before or instead of the approval.
-    const pending = doc(db('sup1'), 'evaluations/e1');
-    await assertFails(updateDoc(pending, { theoryScore: 20 }));
-    await assertFails(setDoc(pending, pendingEvaluation('e1', 20)));
-    await assertFails(deleteDoc(pending));
+    await assertFails(
+      approveBatch('sup1', 'e1', 'stu1', passed, true, { examId: 'e2' }).commit(),
+    );
+  });
 
+  test('the saved theory score is never changed', async () => {
+    await assertSucceeds(approveBatch('sup1', 'e1', 'stu1', passed, true).commit());
+
+    const saved = doc(db('sup1'), 'evaluations/e1');
+    await assertFails(updateDoc(saved, { theoryScore: 20 }));
+    await assertFails(updateDoc(saved, { theoryScore: 20, finalScore: 90 }));
+    await assertFails(deleteDoc(saved));
     assert.equal((await read(db('sup1'), 'evaluations/e1')).data().theoryScore, 18);
   });
 
-  test('a final score that is not the recitation plus the stored theory is refused', async () => {
+  test('a final score that is not the recitation plus the theory is refused', async () => {
     await assertFails(
       approveBatch('sup1', 'e1', 'stu1', { recitation: 70, final: 90 }, true).commit(),
     );
@@ -1403,48 +1463,30 @@ describe('batches: approval', () => {
     );
   });
 
-  test('the stored theory score decides the result, whatever it is', async () => {
-    await env.withSecurityRulesDisabled((context) =>
-      setDoc(doc(context.firestore(), 'evaluations/e1'), pendingEvaluation('e1', 0)),
+  test('the theory score decides the result, whatever it is', async () => {
+    // A final score of 88 does not agree with a theory score of 0; 70 does.
+    await assertFails(
+      approveBatch('sup1', 'e1', 'stu1', { recitation: 70 }, true, { theoryScore: 0 }).commit(),
     );
-    // A final score of 88 no longer agrees with it; 70 + 0 = 70 does.
-    await assertFails(approveBatch('sup1', 'e1', 'stu1', { recitation: 70 }, true).commit());
     await assertSucceeds(
-      approveBatch('sup1', 'e1', 'stu1', { recitation: 70, final: 70 }, true).commit(),
+      approveBatch('sup1', 'e1', 'stu1', { recitation: 70, final: 70 }, true, { theoryScore: 0 }).commit(),
     );
   });
 
-  test('examination without a graded submission cannot be approved', async () => {
-    // Submitted before the theory score was saved on submission, or without
-    // its ten questions and answers: there is no pending evaluation.
-    await withoutEvaluation('e1');
+  test('examination without a submission cannot be approved', async () => {
+    await env.withSecurityRulesDisabled((context) =>
+      deleteDoc(doc(context.firestore(), 'submissions/e1')),
+    );
 
     await assertFails(approveBatch('sup1', 'e1', 'stu1', passed, true).commit());
-
-    const firestore = db('sup1');
-    const batch = writeBatch(firestore);
-    batch.update(doc(firestore, 'exams/e1'), {
-      status: 'approved', reviewedAt: now(), approvedAt: now(), updatedAt: now(),
-    });
-    batch.set(doc(firestore, 'evaluations/e1'), {
-      ...evaluation('e1', 'sup1'), reviewedAt: now(), approvedAt: now(),
-    });
-    batch.set(doc(firestore, 'notifications/e1_result'), {
-      ...notification({ userId: 'stu1' }), relatedId: 'e1', createdAt: now(),
-    });
-    await assertFails(batch.commit());
   });
 
-  test('supervisor cannot create an evaluation, pending or approved', async () => {
-    await withoutEvaluation('e1');
-
+  test('supervisor cannot write an evaluation that is not approved', async () => {
     await assertFails(
       setDoc(doc(db('sup1'), 'evaluations/e1'), { ...pendingEvaluation('e1'), gradedAt: now() }),
     );
     await assertFails(
-      setDoc(doc(db('sup1'), 'evaluations/e1'), {
-        ...evaluation('e1', 'sup1'), reviewedAt: now(), approvedAt: now(),
-      }),
+      approveBatch('sup1', 'e1', 'stu1', passed, true, { status: 'pending' }).commit(),
     );
   });
 
@@ -1499,7 +1541,7 @@ describe('batches: approval', () => {
     const { ruleId, ...withoutRule } = detailedError('error-1');
 
     await assertFails(approveWith({ detailedErrors: null }));
-    await assertFails(approveWith({ detailedErrors: deleteField() }));
+    await assertFails(approveWith({ detailedErrors: missing }));
     await assertFails(approveWith({ detailedErrors: 'خطأ' }));
     await assertFails(approveWith({ detailedErrors: { 0: detailedError('error-1') } }));
     await assertFails(approveWith({ detailedErrors: ['خطأ'] }));
@@ -1539,9 +1581,11 @@ describe('batches: approval', () => {
 
   test('evaluation alone, without approving the examination, is refused', async () => {
     await assertFails(
-      updateDoc(doc(db('sup1'), 'evaluations/e1'), {
+      setDoc(doc(db('sup1'), 'evaluations/e1'), {
+        examId: 'e1',
         supervisorId: 'sup1',
         recitationScore: 70,
+        theoryScore: 18,
         finalScore: 88,
         result: 'passed',
         feedback: null,

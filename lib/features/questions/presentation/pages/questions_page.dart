@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_assets.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/app_back_button.dart';
 import '../../../../core/widgets/state_views.dart';
 import '../../../../router/route_names.dart';
 import '../state/questions_cubit.dart';
@@ -39,16 +40,7 @@ class QuestionsPage extends StatelessWidget {
           child: Scaffold(
             backgroundColor: AppColors.surface,
             appBar: AppBar(
-              shape: const Border(),
-              leading: IconButton(
-                tooltip: 'الرجوع',
-                onPressed: () => _back(context, state),
-                // The asset points left; the design shows it turned around.
-                icon: RotatedBox(
-                  quarterTurns: 2,
-                  child: SvgPicture.asset(AppAssets.questionsBackIcon),
-                ),
-              ),
+              leading: AppBackButton(onPressed: () => _back(context, state)),
               title: const Text('أسئلة الأحكام'),
               actions: [
                 if (loaded != null)
@@ -61,7 +53,7 @@ class QuestionsPage extends StatelessWidget {
                         style: AppTextStyles.cairo(
                           size: 14,
                           weight: FontWeight.w600,
-                          color: AppColors.muted,
+                          color: AppColors.onHeaderMuted,
                           lineHeight: 20,
                           letterSpacing: 0.7,
                         ),

@@ -47,6 +47,24 @@ class FirestoreReportsRepository implements ReportsRepository {
     };
   }
 
+  /// The name of the square or the region of [scope], or empty when the
+  /// scope is the whole system or the name cannot be read. The report is
+  /// still shown without it.
+  Future<String> _scopeName(ReportScope scope) async {
+    final (collection, id) = switch (scope) {
+      ReportScope(:final squareId?) => (FirebaseCollections.squares, squareId),
+      ReportScope(:final regionId?) => (FirebaseCollections.regions, regionId),
+      _ => (null, null),
+    };
+    if (collection == null || id == null) return '';
+    try {
+      final doc = await _firestore.collection(collection).doc(id).get();
+      return doc.data()?['name'] as String? ?? '';
+    } on FirebaseException {
+      return '';
+    }
+  }
+
   @override
   Future<ExamReport> fetchReport(ReportScope scope) async {
     try {
@@ -102,6 +120,7 @@ class FirestoreReportsRepository implements ReportsRepository {
         unitNames: unitNames,
         unitOf: unitOf,
         unitTitle: unitTitle,
+        scopeName: await _scopeName(scope),
       );
     } on FirebaseException catch (e) {
       throw AppFailure.fromFirebase(e);

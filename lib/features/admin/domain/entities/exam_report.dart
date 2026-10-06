@@ -59,6 +59,8 @@ class ReportExam {
     required this.studentName,
     required this.courseName,
     required this.status,
+    this.recitationScore,
+    this.theoryScore,
     this.finalScore,
     this.passed,
     this.date,
@@ -68,6 +70,10 @@ class ReportExam {
   final String studentName;
   final String courseName;
   final ExamStatus status;
+
+  /// Out of 80 and out of 20. Null until the result is approved.
+  final int? recitationScore;
+  final int? theoryScore;
 
   /// Null until the result is approved.
   final int? finalScore;
@@ -85,7 +91,12 @@ class ExamReport {
     required this.byUnit,
     required this.unitTitle,
     required this.exams,
+    this.scopeName = '',
   });
+
+  /// The name of the square or the region the report covers, or empty when
+  /// it is unknown or the report covers the whole system.
+  final String scopeName;
 
   /// The number of student accounts in the scope.
   final int students;

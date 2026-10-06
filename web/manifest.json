@@ -1,6 +1,6 @@
 {
-    "name": "quran_tajweed_app",
-    "short_name": "quran_tajweed_app",
+    "name": "Quran Exam",
+    "short_name": "Quran Exam",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/constants/app_assets.dart';
 import '../../../../core/constants/surah_names.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/app_back_button.dart';
 import '../../../../core/widgets/state_views.dart';
 import '../../domain/entities/exam_segment.dart';
 import '../../domain/entities/exam_status.dart';
@@ -34,17 +33,7 @@ class ExamSegmentPage extends StatelessWidget {
         return Scaffold(
           backgroundColor: AppColors.mushafBackground,
           appBar: AppBar(
-            backgroundColor: AppColors.examHeader,
-            shape: const Border(),
-            leading: IconButton(
-              tooltip: 'الرجوع',
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: SvgPicture.asset(
-                AppAssets.backLightIcon,
-                width: 20,
-                height: 20,
-              ),
-            ),
+            leading: const AppBackButton(),
             title: segment == null ? null : _SegmentTitle(segment),
           ),
           body: switch (state) {

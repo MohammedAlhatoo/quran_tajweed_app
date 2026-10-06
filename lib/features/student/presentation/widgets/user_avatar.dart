@@ -6,10 +6,16 @@ import '../../../../core/theme/app_colors.dart';
 
 /// The default avatar: a person icon on a dark circle.
 class UserAvatar extends StatelessWidget {
-  const UserAvatar({super.key, required this.size, required this.iconSize});
+  const UserAvatar({
+    super.key,
+    required this.size,
+    required this.iconSize,
+    this.borderColor = AppColors.avatarBorder,
+  });
 
   final double size;
   final double iconSize;
+  final Color borderColor;
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +26,7 @@ class UserAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.avatarBackground,
         shape: BoxShape.circle,
-        border: Border.all(color: AppColors.avatarBorder, width: 2),
+        border: Border.all(color: borderColor, width: 2),
       ),
       child: SvgPicture.asset(
         AppAssets.avatarIcon,

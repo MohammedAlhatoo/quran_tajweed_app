@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../../../core/constants/app_assets.dart';
 import '../../../../core/constants/surah_names.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/app_back_button.dart';
 import '../../../../core/widgets/state_views.dart';
 import '../../../courses/domain/entities/tajweed_rule.dart';
 import '../../../exams/domain/entities/exam.dart';
@@ -35,17 +34,8 @@ class ExamReviewPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
-        shape: const Border(),
         automaticallyImplyLeading: false,
-        leading: IconButton(
-          tooltip: 'الرجوع',
-          onPressed: () => Navigator.of(context).maybePop(),
-          // The asset points left; the design shows it turned around.
-          icon: RotatedBox(
-            quarterTurns: 2,
-            child: SvgPicture.asset(AppAssets.questionsBackIcon),
-          ),
-        ),
+        leading: const AppBackButton(),
         title: const Text('مراجعة الاختبار'),
       ),
       body: BlocBuilder<ExamReviewCubit, ExamReviewState>(

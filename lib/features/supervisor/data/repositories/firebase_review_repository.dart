@@ -1,9 +1,9 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../../core/constants/firebase_collections.dart';
-import '../../../../core/services/storage_service.dart';
 import '../../../../core/utils/app_failure.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../certificates/data/repositories/firestore_certificates_repository.dart';
@@ -12,23 +12,23 @@ import '../../../exams/domain/entities/exam.dart';
 import '../../../exams/domain/entities/exam_status.dart';
 import '../../../exams/domain/entities/recitation_error.dart';
 import '../../../exams/domain/entities/submission.dart';
+import '../../../exams/domain/entities/submission_answer.dart';
 import '../../../notifications/data/repositories/firestore_notifications_repository.dart';
 import '../../../questions/domain/entities/exam_question.dart';
 import '../../domain/repositories/review_repository.dart';
 import '../../domain/services/exam_scoring.dart';
 
-/// The theory score is never calculated or written here: the `submitExam`
-/// Cloud Function saves it in the evaluation when the student submits, and
-/// the security rules refuse any change to it.
+/// The theory score is calculated here, on the supervisor's device, from the
+/// student's answers and the correct answers of `question_answers`, which
+/// only a supervisor reads. It is saved once, in the evaluation that approves
+/// the result.
 class FirebaseReviewRepository implements ReviewRepository {
-  FirebaseReviewRepository({
-    required StorageService storageService,
-    FirebaseFirestore? firestore,
-  }) : _storage = storageService,
-       _firestore = firestore ?? FirebaseFirestore.instance;
+  FirebaseReviewRepository({FirebaseFirestore? firestore, http.Client? client})
+    : _firestore = firestore ?? FirebaseFirestore.instance,
+      _client = client ?? http.Client();
 
-  final StorageService _storage;
   final FirebaseFirestore _firestore;
+  final http.Client _client;
 
   /// The number of questions in every examination.
   static const int _questionCount = 10;
@@ -145,25 +145,67 @@ class FirebaseReviewRepository implements ReviewRepository {
   @override
   Future<int?> fetchTheoryScore(String examId) async {
     try {
-      final snapshot = await _firestore
+      // Once the result is approved, the saved score is the one that counts.
+      final evaluation = await _firestore
           .collection(FirebaseCollections.evaluations)
           .doc(examId)
           .get();
-      final theoryScore = snapshot.data()?['theoryScore'];
-      return theoryScore is int ? theoryScore : null;
+      final saved = evaluation.data()?['theoryScore'];
+      if (saved is int) return saved;
+
+      final submission = await fetchSubmission(examId);
+      if (submission == null) return null;
+      return theoryScoreOf(
+        questions: await fetchExamQuestions(examId),
+        answers: submission.answers,
+        answerKey: await fetchAnswerKey(examId),
+      );
     } on FirebaseException catch (e) {
       throw AppFailure.fromFirebase(e);
     }
   }
 
+  /// The theory score out of 20: every question has the same share.
+  ///
+  /// Returns null unless [questions] holds the ten questions of the
+  /// examination and [answerKey] the correct answer of each of them.
+  static int? theoryScoreOf({
+    required List<ExamQuestion> questions,
+    required List<SubmissionAnswer> answers,
+    required Map<int, String> answerKey,
+  }) {
+    if (questions.length != _questionCount) return null;
+    final answerByOrder = {
+      for (final answer in answers) answer.order: answer.answer,
+    };
+    var correctCount = 0;
+    for (final question in questions) {
+      final correctAnswer = answerKey[question.order];
+      if (correctAnswer == null) return null;
+      if (answerByOrder[question.order] == correctAnswer) correctCount++;
+    }
+    return (correctCount * ExamScoring.maxTheoryScore / questions.length)
+        .round();
+  }
+
   @override
   Future<Map<int, String>> fetchAnswerKey(String examId) async {
     try {
-      final snapshot = await _firestore
-          .collection(FirebaseCollections.examAnswerKeys)
-          .doc(examId)
-          .get();
-      return answerKeyFrom(snapshot.data());
+      final questions = await fetchExamQuestions(examId);
+      // Read one by one by ID: the security rules never let them be listed.
+      final questionAnswers = _firestore.collection(
+        FirebaseCollections.questionAnswers,
+      );
+      final snapshots = await Future.wait([
+        for (final question in questions)
+          questionAnswers.doc(question.questionId).get(),
+      ]);
+      return {
+        for (final (index, question) in questions.indexed)
+          if (snapshots[index].data()?['correctAnswer']
+              case final String correctAnswer)
+            question.order: correctAnswer,
+      };
     } on FirebaseException catch (e) {
       throw AppFailure.fromFirebase(e);
     }
@@ -205,10 +247,10 @@ class FirebaseReviewRepository implements ReviewRepository {
     }
   }
 
-  /// What the supervisor adds to the pending evaluation of an examination to
-  /// approve its result. [theoryScore] is the saved theory score; it is used
-  /// for the final score and is not among the fields, so it is never written.
+  /// The evaluation that approves the result of [examId]. [theoryScore] is
+  /// the score calculated from the student's answers.
   static Map<String, dynamic> evaluationApproval({
+    required String examId,
     required String supervisorId,
     required int recitationScore,
     required int theoryScore,
@@ -220,8 +262,10 @@ class FirebaseReviewRepository implements ReviewRepository {
       theoryScore: theoryScore,
     );
     return {
+      'examId': examId,
       'supervisorId': supervisorId,
       'recitationScore': recitationScore,
+      'theoryScore': theoryScore,
       'finalScore': finalScore,
       'result': ExamScoring.resultOf(finalScore),
       'feedback': feedback,
@@ -296,11 +340,12 @@ class FirebaseReviewRepository implements ReviewRepository {
         'approvedAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       })
-      // An update, never a creation: only an examination that was submitted
-      // and graded has an evaluation to approve, and it is approved once.
-      ..update(
+      // The security rules refuse an evaluation that already exists, so a
+      // result is approved once.
+      ..set(
         _firestore.collection(FirebaseCollections.evaluations).doc(exam.id),
         evaluationApproval(
+          examId: exam.id,
           supervisorId: supervisorId,
           recitationScore: recitationScore,
           theoryScore: theoryScore,
@@ -331,10 +376,18 @@ class FirebaseReviewRepository implements ReviewRepository {
   }) async {
     final file = File('${Directory.systemTemp.path}/review_$examId.m4a');
     try {
-      await _storage.downloadFile(path: recordingPath, file: file);
+      final response = await _client.get(Uri.parse(recordingPath));
+      if (response.statusCode != 200) {
+        throw const AppFailure('تعذّر تحميل التسجيل. حاول مرة أخرى.');
+      }
+      await file.writeAsBytes(response.bodyBytes);
       return file.path;
-    } on FirebaseException catch (e) {
-      throw AppFailure.fromFirebase(e);
+    } on http.ClientException {
+      throw const AppFailure('تعذّر الاتصال. تحقق من الإنترنت وحاول مرة أخرى.');
+    } on SocketException {
+      throw const AppFailure('تعذّر الاتصال. تحقق من الإنترنت وحاول مرة أخرى.');
+    } on FormatException {
+      throw const AppFailure('رابط التسجيل غير صالح.');
     } on FileSystemException {
       throw const AppFailure('تعذّر حفظ التسجيل على الجهاز.');
     }

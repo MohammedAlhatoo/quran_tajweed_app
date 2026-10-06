@@ -26,9 +26,10 @@ Map<String, Map<String, dynamic>> _approve(int recitationScore) {
   );
 }
 
-/// What an approval adds to the evaluation, with a saved theory score of 18.
+/// The evaluation of an approval, with a theory score of 18.
 Map<String, dynamic> _evaluation(int recitationScore) {
   return FirebaseReviewRepository.evaluationApproval(
+    examId: 'exam-1',
     supervisorId: 'sup-1',
     recitationScore: recitationScore,
     theoryScore: 18,
@@ -68,6 +69,7 @@ void main() {
     test('the evaluation holds the notes and the detailed errors', () {
       final recordedAt = DateTime(2026, 10, 3, 9);
       final evaluation = FirebaseReviewRepository.evaluationApproval(
+        examId: 'exam-1',
         supervisorId: 'sup-1',
         recitationScore: 60,
         theoryScore: 18,
@@ -119,14 +121,14 @@ void main() {
       ]);
     });
 
-    test('the approval never writes the theory score or a new evaluation', () {
-      // The theory score is saved on submission; the security rules refuse
-      // an approval that touches it.
-      expect(_evaluation(60).keys, isNot(contains('theoryScore')));
-      expect(_evaluation(60).keys, isNot(contains('examId')));
+    test('the evaluation holds exactly the fields the rules accept', () {
+      expect(_evaluation(60)['examId'], 'exam-1');
+      expect(_evaluation(60)['theoryScore'], 18);
       expect(_evaluation(60).keys.toSet(), {
+        'examId',
         'supervisorId',
         'recitationScore',
+        'theoryScore',
         'finalScore',
         'result',
         'feedback',
@@ -138,8 +140,9 @@ void main() {
       expect(_approve(60).keys, isNot(contains('evaluations/exam-1')));
     });
 
-    test('the final score is the recitation plus the saved theory score', () {
+    test('the final score is the recitation plus the theory score', () {
       final evaluation = FirebaseReviewRepository.evaluationApproval(
+        examId: 'exam-1',
         supervisorId: 'sup-1',
         recitationScore: 55,
         theoryScore: 14,
